@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import requests
 import json
@@ -7,12 +7,17 @@ import os
 
 app = FastAPI(title="Assistant IA Local avec Ollama")
 
-
-
 # Configuration Ollama
 OLLAMA_API = "http://localhost:11434/api"
 
-# Dans app.py, modification de la fonction chat pour supporter le streaming
+# Fonction manquante pour le streaming
+async def stream_ollama_response(payload):
+    async with requests.Session() as session:
+        async with session.post(f"{OLLAMA_API}/chat", json=payload) as response:
+            async for line in response.iter_lines():
+                if line:
+                    yield line + b"\n"
+
 @app.post("/chat")
 async def chat(request: Request):
     data = await request.json()
@@ -40,11 +45,6 @@ async def list_models():
     except Exception as e:
         print(f"Erreur lors de la récupération des modèles: {e}")
         return {"models": []}  # Retourner une liste vide en cas d'erreur
-
-
-
-
-
 
 # Servir les fichiers statiques
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
