@@ -491,3 +491,82 @@ select:focus {
     height: 24px;
     fill: white;
 }
+
+/* Style pour le bouton toggle de mode */
+#mode-toggle {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+#mode-switch-button {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.8), rgba(52, 152, 219, 0.6));
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    padding: 0;
+}
+
+.mode-icon {
+    width: 24px;
+    height: 24px;
+    fill: white;
+    position: absolute;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.mode-icon.active {
+    opacity: 1;
+}
+
+/* Classes pour les modes de conversation */
+body.voice-mode #chat-container {
+    height: 30vh;
+}
+
+body.voice-mode #visualization-container {
+    height: 300px;
+    margin-top: 50px;
+    margin-bottom: 50px;
+}
+
+body.voice-mode #ai-circle {
+    width: 150px;
+    height: 150px;
+}
+
+body.voice-mode #input-container {
+    display: flex;
+    justify-content: center;
+}
+
+body.voice-mode #message-input,
+body.voice-mode button:not(#mic-button):not(#mode-switch-button) {
+    display: none;
+}
+
+body.voice-mode #mic-button {
+    width: 70px;
+    height: 70px;
+    margin: 0;
+}
+
+body.voice-mode #mic-icon {
+    width: 35px;
+    height: 35px;
+}
+
+/* Animation de transition */
+#visualization-container,
+#chat-container,
+#input-container,
+#ai-circle,
+#mic-button,
+#mic-icon {
+    transition: all 0.5s ease-in-out;
+}

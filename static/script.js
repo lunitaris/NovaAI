@@ -197,7 +197,13 @@ async function toggleRecording() {
             });
             
             // Ajouter un message pour indiquer que l'assistant écoute
-            addMessage('system', 'Écoute en cours... Parlez maintenant.');
+            if (document.body.classList.contains('voice-mode')) {
+                // En mode vocal, simplement afficher un message de traitement
+                addMessage('system', 'Écoute en cours... Parlez maintenant.');
+            } else {
+                // En mode chat, ajouter un message normal
+                addMessage('system', 'Écoute en cours... Parlez maintenant.');
+            }
         } catch (error) {
             console.error('Erreur lors du démarrage de l\'enregistrement:', error);
             isRecording = false;
@@ -212,8 +218,14 @@ async function toggleRecording() {
         
         try {
             // Informer l'utilisateur de l'attente
-            chatContainer.removeChild(chatContainer.lastChild);
-            addMessage('system', 'Transcription en cours... Veuillez patienter.');
+            if (document.body.classList.contains('voice-mode')) {
+                // En mode vocal, simplement afficher un message de traitement
+                addMessage('system', 'Transcription en cours...');
+            } else {
+                // En mode chat, remplacer le dernier message
+                chatContainer.removeChild(chatContainer.lastChild);
+                addMessage('system', 'Transcription en cours... Veuillez patienter.');
+            }
             
             // Envoyer la requête d'arrêt
             await fetch(`${VOICE_SERVICE_URL}/stop-recording`, {
@@ -280,8 +292,40 @@ messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendMessage();
 });
 
+// Fonction pour basculer entre les modes de conversation
+function toggleConversationMode() {
+    const body = document.body;
+    const chatIcon = document.getElementById('chat-icon');
+    const voiceIcon = document.getElementById('voice-icon');
+    
+    // Basculer la classe sur le body
+    body.classList.toggle('voice-mode');
+    
+    // Mettre à jour les icônes
+    chatIcon.classList.toggle('active');
+    voiceIcon.classList.toggle('active');
+    
+    // Si on est en mode vocal, centrer le scroll du chat
+    if (body.classList.contains('voice-mode')) {
+        // Attendre que les animations de transition se terminent
+        setTimeout(() => {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }, 500);
+        
+        // Ajouter un message d'information
+        addMessage('system', 'Mode vocal activé. Cliquez sur le micro pour parler.');
+    } else {
+        // Revenir au mode chat
+        addMessage('system', 'Mode conversation activé.');
+    }
+    
+    // Ajuster l'état de l'IA
+    setAIState(currentState);
+}
+
 // Événements d'écoute
 micButton.addEventListener('click', toggleRecording);
+document.getElementById('mode-switch-button').addEventListener('click', toggleConversationMode);
 
 // Initialisation
 window.onload = function() {
@@ -301,3 +345,10 @@ document.addEventListener('DOMContentLoaded', function() {
         loadComponents(secondaryComponents);
     }, 100);
 });
+
+// Fonction pour charger les composants (définie pour éviter des erreurs, même si elle n'est pas utilisée)
+function loadComponents(components) {
+    console.log('Chargement des composants:', components);
+    // Cette fonction est appelée mais n'est pas implémentée dans l'exemple original
+    // On la garde pour éviter des erreurs dans la console
+}
