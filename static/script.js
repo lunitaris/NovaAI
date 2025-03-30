@@ -197,13 +197,7 @@ async function toggleRecording() {
             });
             
             // Ajouter un message pour indiquer que l'assistant écoute
-            if (document.body.classList.contains('voice-mode')) {
-                // En mode vocal, simplement afficher un message de traitement
-                addMessage('system', 'Écoute en cours... Parlez maintenant.');
-            } else {
-                // En mode chat, ajouter un message normal
-                addMessage('system', 'Écoute en cours... Parlez maintenant.');
-            }
+            addMessage('system', 'Écoute en cours... Parlez maintenant.');
         } catch (error) {
             console.error('Erreur lors du démarrage de l\'enregistrement:', error);
             isRecording = false;
@@ -218,14 +212,8 @@ async function toggleRecording() {
         
         try {
             // Informer l'utilisateur de l'attente
-            if (document.body.classList.contains('voice-mode')) {
-                // En mode vocal, simplement afficher un message de traitement
-                addMessage('system', 'Transcription en cours...');
-            } else {
-                // En mode chat, remplacer le dernier message
-                chatContainer.removeChild(chatContainer.lastChild);
-                addMessage('system', 'Transcription en cours... Veuillez patienter.');
-            }
+            chatContainer.removeChild(chatContainer.lastChild);
+            addMessage('system', 'Transcription en cours... Veuillez patienter.');
             
             // Envoyer la requête d'arrêt
             await fetch(`${VOICE_SERVICE_URL}/stop-recording`, {
