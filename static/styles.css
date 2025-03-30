@@ -450,46 +450,90 @@ select:focus {
     pointer-events: none;
 }
 
-/* Bouton microphone */
-#mic-button {
+/* Conteneur des boutons microphone */
+#mic-buttons-container {
+    display: flex;
+    gap: 10px;
+    margin-right: 10px;
+}
+
+/* Styles communs pour les boutons microphone */
+#mic-button, 
+#mic-button-stream {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: linear-gradient(135deg, rgba(52, 152, 219, 0.8), rgba(52, 152, 219, 0.6));
     display: flex;
     justify-content: center;
     align-items: center;
     cursor: pointer;
-    margin-right: 10px;
     box-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
     transition: all 0.3s ease;
+    position: relative;
 }
 
-#mic-button:hover {
+/* Style spécifique pour le micro classique */
+#mic-button.mic-classic {
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.8), rgba(52, 152, 219, 0.6));
+}
+
+#mic-button.mic-classic:hover {
     background: linear-gradient(135deg, rgba(41, 128, 185, 0.9), rgba(52, 152, 219, 0.7));
     box-shadow: 0 0 15px rgba(52, 152, 219, 0.5);
     transform: translateY(-2px);
 }
 
-#mic-button:active {
-    transform: translateY(1px);
+/* Style spécifique pour le micro streaming */
+#mic-button-stream.mic-stream {
+    background: linear-gradient(135deg, rgba(142, 68, 173, 0.8), rgba(155, 89, 182, 0.6));
 }
 
-#mic-button.recording {
+#mic-button-stream.mic-stream:hover {
+    background: linear-gradient(135deg, rgba(125, 60, 152, 0.9), rgba(142, 68, 173, 0.7));
+    box-shadow: 0 0 15px rgba(155, 89, 182, 0.5);
+    transform: translateY(-2px);
+}
+
+/* Icône de micro */
+#mic-icon, 
+#mic-stream-icon {
+    width: 24px;
+    height: 24px;
+    fill: white;
+}
+
+/* État d'enregistrement pour les deux micros */
+#mic-button.recording,
+#mic-button-stream.recording {
     background: linear-gradient(135deg, rgba(231, 76, 60, 0.8), rgba(192, 57, 43, 0.6));
     animation: pulse 1.5s infinite;
+}
+
+/* Indicateur de streaming */
+.stream-indicator {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #e74c3c;
+    box-shadow: 0 0 5px rgba(231, 76, 60, 0.8);
+}
+
+#mic-button-stream.streaming .stream-indicator {
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
 }
 
 @keyframes pulse {
     0% { box-shadow: 0 0 5px rgba(231, 76, 60, 0.5); }
     50% { box-shadow: 0 0 20px rgba(231, 76, 60, 0.8); }
     100% { box-shadow: 0 0 5px rgba(231, 76, 60, 0.5); }
-}
-
-#mic-icon {
-    width: 24px;
-    height: 24px;
-    fill: white;
 }
 
 /* Style pour le bouton toggle de mode */
@@ -546,19 +590,20 @@ body.voice-mode #input-container {
 }
 
 body.voice-mode #message-input,
-body.voice-mode button:not(#mic-button):not(#mode-switch-button) {
+body.voice-mode button:not(#mic-button):not(#mic-button-stream):not(#mode-switch-button) {
     display: none;
 }
 
-body.voice-mode #mic-button {
-    width: 70px;
-    height: 70px;
-    margin: 0;
+body.voice-mode #mic-button,
+body.voice-mode #mic-button-stream {
+    width: 60px;
+    height: 60px;
 }
 
-body.voice-mode #mic-icon {
-    width: 35px;
-    height: 35px;
+body.voice-mode #mic-icon,
+body.voice-mode #mic-stream-icon {
+    width: 30px;
+    height: 30px;
 }
 
 /* Animation de transition */
@@ -567,6 +612,43 @@ body.voice-mode #mic-icon {
 #input-container,
 #ai-circle,
 #mic-button,
-#mic-icon {
+#mic-button-stream,
+#mic-icon,
+#mic-stream-icon {
     transition: all 0.5s ease-in-out;
+}
+
+
+/*--------------------------------------------- TEXT TO SPEECH ---------- VOCAL SYNTHESE ------------------------------------- */
+
+/* Ajouter ces styles à votre fichier CSS */
+#tts-button {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.8), rgba(39, 174, 96, 0.6));
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    margin-right: 10px;
+    box-shadow: 0 0 10px rgba(46, 204, 113, 0.3);
+    transition: all 0.3s ease;
+}
+
+#tts-button:hover {
+    background: linear-gradient(135deg, rgba(39, 174, 96, 0.9), rgba(46, 204, 113, 0.7));
+    box-shadow: 0 0 15px rgba(46, 204, 113, 0.5);
+    transform: translateY(-2px);
+}
+
+#tts-icon {
+    width: 24px;
+    height: 24px;
+    fill: white;
+    transition: opacity 0.3s ease;
+}
+
+#tts-icon.disabled {
+    opacity: 0.5;
 }

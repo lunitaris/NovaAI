@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 import json
@@ -99,6 +99,73 @@ async def chat(request: Request):
             error_time = time.time() - start_time
             logger.error(f"Erreur lors de la communication avec Ollama après {error_time:.2f} secondes: {e}")
             return {"response": "Erreur de communication avec l'assistant", "history": conversation_history}
+
+@app.post("/chat-stream")
+async def chat_stream(request: Request):
+    start_time = time.time()
+    logger.info(f"Début du traitement de la requête chat-stream")
+    
+    data = await request.json()
+    user_message = data.get("message", "")
+    conversation_history = data.get("history", [])
+    model = data.get("model", "llama3")
+    
+    logger.info(f"Message utilisateur (streaming): '{user_message[:50]}...' (tronqué)")
+    logger.info(f"Modèle sélectionné (streaming): {model}")
+    
+    # Ajout du message utilisateur à l'historique
+    conversation_history.append({"role": "user", "content": user_message})
+    
+    # Paramètres pour Ollama avec streaming activé
+    payload = {
+        "model": model,
+        "messages": conversation_history,
+        "stream": True,
+        "options": {
+            "temperature": 0.7,
+            "num_predict": 256,
+            "top_p": 0.95,
+            "top_k": 30
+        }
+    }
+    
+    async def generate():
+        total_response = ""
+        
+        # Mesurer le temps de début du streaming
+        stream_start = time.time()
+        logger.info(f"Démarrage du streaming Ollama")
+        
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                async with client.stream("POST", f"{OLLAMA_API}/chat", json=payload, timeout=60.0) as response:
+                    async for chunk in response.aiter_text():
+                        if chunk:
+                            try:
+                                chunk_data = json.loads(chunk)
+                                if "message" in chunk_data and "content" in chunk_data["message"]:
+                                    content = chunk_data["message"]["content"]
+                                    total_response += content
+                                    # Envoyer chaque morceau au client
+                                    yield f"data: {json.dumps({'chunk': content})}\n\n"
+                            except json.JSONDecodeError:
+                                logger.warning(f"Impossible de décoder le chunk JSON: {chunk}")
+                                continue
+            
+            # Une fois le streaming terminé, envoyer l'historique complet
+            conversation_history.append({"role": "assistant", "content": total_response})
+            stream_time = time.time() - stream_start
+            logger.info(f"Streaming Ollama terminé en {stream_time:.2f} secondes")
+            
+            # Envoyer un message final pour indiquer la fin du streaming
+            yield f"data: {json.dumps({'done': True, 'history': conversation_history})}\n\n"
+            
+        except Exception as e:
+            stream_time = time.time() - stream_start
+            logger.error(f"Erreur lors du streaming après {stream_time:.2f} secondes: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 @app.get("/models")
 async def list_models():
