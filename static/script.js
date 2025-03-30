@@ -288,3 +288,16 @@ window.onload = function() {
     loadModels();
     setAIState('idle');
 };
+
+// Dans script.js
+document.addEventListener('DOMContentLoaded', function() {
+    // Charger uniquement les composants essentiels
+    const essentialComponents = ['visualization', 'chat-input'];
+    loadComponents(essentialComponents);
+    
+    // Charger les composants secondaires après l'initialisation
+    setTimeout(() => {
+        const secondaryComponents = ['model-selector', 'voice-recognition'];
+        loadComponents(secondaryComponents);
+    }, 100);
+});

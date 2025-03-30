@@ -12,6 +12,7 @@ app = FastAPI(title="Assistant IA Local avec Ollama")
 # Configuration Ollama
 OLLAMA_API = "http://localhost:11434/api"
 
+# Dans app.py, modification de la fonction chat pour supporter le streaming
 @app.post("/chat")
 async def chat(request: Request):
     data = await request.json()
@@ -21,27 +22,15 @@ async def chat(request: Request):
     # Ajout du message utilisateur à l'historique
     conversation_history.append({"role": "user", "content": user_message})
     
-    # Paramètres pour Ollama
+    # Paramètres pour Ollama avec streaming activé
     payload = {
-        "model": "llama3",  # ou votre modèle préféré
+        "model": data.get("model", "llama3"),
         "messages": conversation_history,
-        "stream": False
+        "stream": True
     }
     
-    # Appel à l'API Ollama
-    response = requests.post(f"{OLLAMA_API}/chat", json=payload)
-    result = response.json()
-    
-    # Extraction de la réponse
-    assistant_message = result.get("message", {}).get("content", "")
-    
-    # Ajout de la réponse à l'historique
-    conversation_history.append({"role": "assistant", "content": assistant_message})
-    
-    return JSONResponse({
-        "response": assistant_message,
-        "history": conversation_history
-    })
+    # Création d'un générateur pour streamer la réponse
+    return StreamingResponse(stream_ollama_response(payload), media_type="text/event-stream")
 
 @app.get("/models")
 async def list_models():
