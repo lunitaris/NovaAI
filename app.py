@@ -4,32 +4,79 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 import json
 import os
+import time
+import logging
+
+# Configuration du logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("app.log")
+    ]
+)
+logger = logging.getLogger("nova-app")
 
 app = FastAPI(title="Assistant IA Local avec Ollama")
 
 # Configuration Ollama
 OLLAMA_API = "http://localhost:11434/api"
 
+# Cache simple pour les réponses
+response_cache = {}
+
 @app.post("/chat")
 async def chat(request: Request):
+    start_time = time.time()
+    logger.info(f"Début du traitement de la requête chat")
+    
     data = await request.json()
     user_message = data.get("message", "")
     conversation_history = data.get("history", [])
+    model = data.get("model", "llama3")
+    
+    logger.info(f"Message utilisateur: '{user_message[:50]}...' (tronqué)")
+    logger.info(f"Modèle sélectionné: {model}")
     
     # Ajout du message utilisateur à l'historique
     conversation_history.append({"role": "user", "content": user_message})
     
-    # Paramètres pour Ollama sans streaming
+    # Créer une clé de cache (uniquement basée sur le dernier message pour simplicité)
+    cache_key = f"{model}:{user_message}"
+    
+    # Vérifier le cache
+    if cache_key in response_cache:
+        logger.info(f"Réponse trouvée dans le cache")
+        cached_response = response_cache[cache_key]
+        cache_time = time.time() - start_time
+        logger.info(f"Traitement depuis le cache en {cache_time:.2f} secondes")
+        return cached_response
+    
+    # Paramètres pour Ollama avec optimisations
     payload = {
-        "model": data.get("model", "llama3"),
+        "model": model,
         "messages": conversation_history,
-        "stream": False
+        "stream": False,
+        "options": {
+            "temperature": 0.7,
+            "num_predict": 256,
+            "top_p": 0.95,
+            "top_k": 30
+        }
     }
     
     # Appel synchrone à Ollama
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
+            logger.info(f"Envoi de la requête à Ollama")
+            ollama_start_time = time.time()
+            
             response = await client.post(f"{OLLAMA_API}/chat", json=payload)
+            
+            ollama_time = time.time() - ollama_start_time
+            logger.info(f"Réponse d'Ollama reçue en {ollama_time:.2f} secondes")
+            
             response_data = response.json()
             
             # Extraire la réponse de l'assistant
@@ -38,20 +85,58 @@ async def chat(request: Request):
             # Mettre à jour l'historique
             conversation_history.append({"role": "assistant", "content": assistant_message})
             
-            return {"response": assistant_message, "history": conversation_history}
+            # Préparer la réponse
+            result = {"response": assistant_message, "history": conversation_history}
+            
+            # Stocker dans le cache
+            response_cache[cache_key] = result
+            
+            total_time = time.time() - start_time
+            logger.info(f"Traitement total de la requête en {total_time:.2f} secondes")
+            
+            return result
         except Exception as e:
-            print(f"Erreur lors de la communication avec Ollama: {e}")
+            error_time = time.time() - start_time
+            logger.error(f"Erreur lors de la communication avec Ollama après {error_time:.2f} secondes: {e}")
             return {"response": "Erreur de communication avec l'assistant", "history": conversation_history}
 
 @app.get("/models")
 async def list_models():
+    logger.info("Récupération des modèles disponibles")
+    start_time = time.time()
+    
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(f"{OLLAMA_API}/tags")
-            return response.json()
+            models_data = response.json()
+            
+            elapsed_time = time.time() - start_time
+            logger.info(f"Modèles récupérés en {elapsed_time:.2f} secondes: {len(models_data.get('models', []))} modèles trouvés")
+            
+            return models_data
         except Exception as e:
-            print(f"Erreur lors de la récupération des modèles: {e}")
+            elapsed_time = time.time() - start_time
+            logger.error(f"Erreur lors de la récupération des modèles après {elapsed_time:.2f} secondes: {e}")
             return {"models": []}  # Retourner une liste vide en cas d'erreur
+
+# Middleware pour logger les requêtes
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    
+    path = request.url.path
+    method = request.method
+    
+    if not path.startswith("/static"):
+        logger.info(f"Requête {method} {path} reçue")
+    
+    response = await call_next(request)
+    
+    if not path.startswith("/static"):
+        process_time = time.time() - start_time
+        logger.info(f"Requête {method} {path} traitée en {process_time:.2f} secondes")
+    
+    return response
 
 # Servir les fichiers statiques
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
@@ -62,4 +147,9 @@ if __name__ == "__main__":
     # Créer le dossier static s'il n'existe pas
     os.makedirs("static", exist_ok=True)
     
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Configurer uvicorn pour les logs
+    log_config = uvicorn.config.LOGGING_CONFIG
+    log_config["formatters"]["access"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
+    
+    logger.info("Démarrage de l'application Nova sur le port 8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_config=log_config)
