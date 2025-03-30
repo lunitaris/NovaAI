@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assistant IA Local (Ollama)</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>Assistant IA Local</h1>
+    
+    <div id="visualization-container">
+        <div id="ai-circle" class="idle">
+            <div class="circle-segment"></div>
+            <div class="segment-inner"></div>
+            <div class="segment-line" style="transform: rotate(0deg)"></div>
+            <div class="segment-line" style="transform: rotate(45deg)"></div>
+            <div class="segment-line" style="transform: rotate(90deg)"></div>
+            <div class="segment-line" style="transform: rotate(135deg)"></div>
+        </div>
+    </div>
+    
+    <div id="model-selector">
+        <label for="model-select">Modèle: </label>
+        <select id="model-select"></select>
+    </div>
+    
+    <div id="chat-container"></div>
+    
+    <div id="input-container">
+        <div id="mic-button">
+            <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+        </div>
+        <input type="text" id="message-input" placeholder="Posez votre question...">
+        <button onclick="sendMessage()">Envoyer</button>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
