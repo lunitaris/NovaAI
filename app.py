@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-import httpx  # Remplacer requests par httpx
+import httpx
 import json
 import os
 
@@ -9,14 +9,6 @@ app = FastAPI(title="Assistant IA Local avec Ollama")
 
 # Configuration Ollama
 OLLAMA_API = "http://localhost:11434/api"
-
-# Fonction pour streamer la réponse d'Ollama
-async def stream_ollama_response(payload):
-    async with httpx.AsyncClient(timeout=60.0) as client:  # Augmenter le timeout à 60 secondes
-        async with client.stream("POST", f"{OLLAMA_API}/chat", json=payload, timeout=60.0) as response:
-            async for line in response.aiter_lines():
-                if line:
-                    yield f"data: {line}\n\n"
 
 @app.post("/chat")
 async def chat(request: Request):
@@ -27,19 +19,33 @@ async def chat(request: Request):
     # Ajout du message utilisateur à l'historique
     conversation_history.append({"role": "user", "content": user_message})
     
-    # Paramètres pour Ollama avec streaming activé
+    # Paramètres pour Ollama sans streaming
     payload = {
         "model": data.get("model", "llama3"),
         "messages": conversation_history,
-        "stream": True
+        "stream": False
     }
     
-    # Création d'un générateur pour streamer la réponse
-    return StreamingResponse(stream_ollama_response(payload), media_type="text/event-stream")
+    # Appel synchrone à Ollama
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            response = await client.post(f"{OLLAMA_API}/chat", json=payload)
+            response_data = response.json()
+            
+            # Extraire la réponse de l'assistant
+            assistant_message = response_data.get("message", {}).get("content", "")
+            
+            # Mettre à jour l'historique
+            conversation_history.append({"role": "assistant", "content": assistant_message})
+            
+            return {"response": assistant_message, "history": conversation_history}
+        except Exception as e:
+            print(f"Erreur lors de la communication avec Ollama: {e}")
+            return {"response": "Erreur de communication avec l'assistant", "history": conversation_history}
 
 @app.get("/models")
 async def list_models():
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(f"{OLLAMA_API}/tags")
             return response.json()
