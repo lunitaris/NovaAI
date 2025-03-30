@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-import requests
+import httpx  # Remplacer requests par httpx
 import json
 import os
 
@@ -10,13 +10,13 @@ app = FastAPI(title="Assistant IA Local avec Ollama")
 # Configuration Ollama
 OLLAMA_API = "http://localhost:11434/api"
 
-# Fonction manquante pour le streaming
+# Fonction pour streamer la réponse d'Ollama
 async def stream_ollama_response(payload):
-    async with requests.Session() as session:
-        async with session.post(f"{OLLAMA_API}/chat", json=payload) as response:
-            async for line in response.iter_lines():
+    async with httpx.AsyncClient(timeout=60.0) as client:  # Augmenter le timeout à 60 secondes
+        async with client.stream("POST", f"{OLLAMA_API}/chat", json=payload, timeout=60.0) as response:
+            async for line in response.aiter_lines():
                 if line:
-                    yield line + b"\n"
+                    yield f"data: {line}\n\n"
 
 @app.post("/chat")
 async def chat(request: Request):
@@ -39,12 +39,13 @@ async def chat(request: Request):
 
 @app.get("/models")
 async def list_models():
-    try:
-        response = requests.get(f"{OLLAMA_API}/tags")
-        return response.json()
-    except Exception as e:
-        print(f"Erreur lors de la récupération des modèles: {e}")
-        return {"models": []}  # Retourner une liste vide en cas d'erreur
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(f"{OLLAMA_API}/tags")
+            return response.json()
+        except Exception as e:
+            print(f"Erreur lors de la récupération des modèles: {e}")
+            return {"models": []}  # Retourner une liste vide en cas d'erreur
 
 # Servir les fichiers statiques
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

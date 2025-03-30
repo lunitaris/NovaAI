@@ -22,13 +22,25 @@ WHISPER_PATH = "opt/whisper.cpp"
 WHISPER_MODEL = os.path.join(WHISPER_PATH, "models/ggml-base.bin")
 WHISPER_EXEC = os.path.join(WHISPER_PATH, "build/bin/whisper-cli")
 
+
+###########################################################################################################################################################################
 # Paramètres d'enregistrement audio
 SAMPLE_RATE = 16000
 CHANNELS = 1
 DTYPE = np.int16
-SILENCE_THRESHOLD = 0.03
-MIN_SILENCE_DURATION = 1.0  # secondes
-MAX_RECORD_DURATION = 30.0  # secondes maximum d'enregistrement
+
+# Secondes maximum d'enregistrement
+MAX_RECORD_DURATION = 60.0  # 60 secondes au lieu de 30
+# Augmenter la durée minimale de silence requise pour considérer la fin
+MIN_SILENCE_DURATION = 1.5  # secondes 
+# Réduire le seuil de détection du silence
+SILENCE_THRESHOLD = 0.02  # plus sensible que 0.03
+
+###########################################################################################################################################################################
+
+
+
+
 
 # Variables globales pour contrôler l'enregistrement
 recording = False
