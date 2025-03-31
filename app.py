@@ -1,19 +1,19 @@
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
-import json
-import os
 import time
 import logging
 import asyncio
+import json
 
-# Importer les modules intégrés
-from voice_module import VoiceRecognitionService
-from tts_module import TTSService
+from TTS.voice_module import VoiceRecognitionService
+from TTS.tts_module import TTSService
+from TTS.chat_engine import prepare_conversation, get_llm_response
+from CoreIA.synthetic_memory import SyntheticMemory
 
-# Configuration du logging
+
+# Logger
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -24,105 +24,53 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nova-app")
 
-
 app = FastAPI(title="Assistant IA Local avec Ollama")
 
-
-# Charger le prompt système depuis un fichier JSON
-try:
-    with open("personality.json", "r", encoding="utf-8") as f:
-        DEFAULT_SYSTEM_PROMPT = json.load(f)
-except Exception as e:
-    DEFAULT_SYSTEM_PROMPT = {
-        "role": "system",
-        "content": "Tu es un assistant vocal local."
-    }
-    logger.warning(f"Impossible de charger le prompt personnalisé: {e}")
-
-
-
-# Configuration Ollama
-OLLAMA_API = "http://localhost:11434/api"
-
-# Initialiser les services intégrés
 voice_service = VoiceRecognitionService()
 tts_service = TTSService()
-
-# Cache simple pour les réponses
 response_cache = {}
+
+synthetic_memory = SyntheticMemory()
+
+
+
+
+
+
 
 @app.post("/chat")
 async def chat(request: Request):
-    start_time = time.time()
-    logger.info(f"Début du traitement de la requête chat")
-
     data = await request.json()
     user_message = data.get("message", "")
-    conversation_history = data.get("history", [])
+    history = data.get("history", [])
     model = data.get("model", "llama3")
-    
-    logger.info(f"Message utilisateur: '{user_message[:50]}...' (tronqué)")
-    logger.info(f"Modèle sélectionné: {model}")
 
-    conversation_history.append({"role": "user", "content": user_message})      # Ajoute le message de l'utilisateur
-    conversation_history = [DEFAULT_SYSTEM_PROMPT] + conversation_history       # Injecte le prompt système au début
-
+    conversation = prepare_conversation(user_message, history)
     cache_key = f"{model}:{user_message}"
 
     if cache_key in response_cache:
-        logger.info(f"Réponse trouvée dans le cache")
-        cached_response = response_cache[cache_key]
-        return cached_response
+        return response_cache[cache_key]
 
-    payload = {
-        "model": model,
-        "messages": conversation_history,
-        "stream": False,
-        "options": {
-            "temperature": 0.7,
-            "num_predict": 256,
-            "top_p": 0.95,
-            "top_k": 30
-        }
-    }
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        try:
-            response = await client.post(f"{OLLAMA_API}/chat", json=payload)
-            response_data = response.json()
-
-            assistant_message = response_data.get("message", {}).get("content", "")
-            await tts_service.synthesize(assistant_message)
-
-            conversation_history.append({"role": "assistant", "content": assistant_message})
-            result = {"response": assistant_message, "history": conversation_history}
-            response_cache[cache_key] = result
-            return result
-        except Exception as e:
-            logger.error(f"Erreur communication avec Ollama: {e}")
-            return {"response": "Erreur de communication avec l'assistant", "history": conversation_history}
+    try:
+        result = await get_llm_response(conversation, model=model, stream=False)
+        assistant_message = result.get("message", {}).get("content", "")
+        await tts_service.synthesize(assistant_message)
+        conversation.append({"role": "assistant", "content": assistant_message})
+        final_result = {"response": assistant_message, "history": conversation}
+        response_cache[cache_key] = final_result
+        return final_result
+    except Exception as e:
+        logger.error(f"Erreur communication avec Ollama: {e}")
+        return {"response": "Erreur de communication avec l'assistant", "history": conversation}
 
 @app.post("/chat-stream")
 async def chat_stream(request: Request):
     data = await request.json()
     user_message = data.get("message", "")
-    conversation_history = data.get("history", [])
+    history = data.get("history", [])
     model = data.get("model", "llama3")
-    
-    conversation_history.append({"role": "user", "content": user_message})      # Ajoute le message de l'utilisateur
-    conversation_history = [DEFAULT_SYSTEM_PROMPT] + conversation_history       # Injecte le prompt système au début
 
-    payload = {
-        "model": model,
-        "messages": conversation_history,
-        "stream": True,
-        "options": {
-            "temperature": 0.7,
-            "num_predict": 256,
-            "top_p": 0.95,
-            "top_k": 30
-        }
-    }
+    conversation = prepare_conversation(user_message, history)
 
     async def generate():
         total_response = ""
@@ -130,7 +78,17 @@ async def chat_stream(request: Request):
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                async with client.stream("POST", f"{OLLAMA_API}/chat", json=payload, timeout=60.0) as response:
+                async with client.stream("POST", "http://localhost:11434/api/chat", json={
+                    "model": model,
+                    "messages": conversation,
+                    "stream": True,
+                    "options": {
+                        "temperature": 0.7,
+                        "num_predict": 256,
+                        "top_p": 0.95,
+                        "top_k": 30
+                    }
+                }) as response:
                     async for chunk in response.aiter_text():
                         if chunk:
                             try:
@@ -140,35 +98,25 @@ async def chat_stream(request: Request):
                                     total_response += content
                                     current_sentence += content
 
-                                    sentence_end = any(mark in content for mark in (['.', '!', '?', ':', ';', '']))
-
-                                    if sentence_end or len(current_sentence) > 80:
+                                    if any(p in content for p in [".", "!", "?", ";", ":"]) or len(current_sentence) > 80:
                                         await tts_service.synthesize(current_sentence)
                                         current_sentence = ""
 
                                     yield f"data: {json.dumps({'chunk': content})}\n\n"
+
                             except json.JSONDecodeError:
                                 continue
 
             if current_sentence:
                 await tts_service.synthesize(current_sentence)
 
-            conversation_history.append({"role": "assistant", "content": total_response})
-            yield f"data: {json.dumps({'done': True, 'history': conversation_history})}\n\n"
+            conversation.append({"role": "assistant", "content": total_response})
+            yield f"data: {json.dumps({'done': True, 'history': conversation})}\n\n"
 
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
-
-@app.get("/models")
-async def list_models():
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            response = await client.get(f"{OLLAMA_API}/tags")
-            return response.json()
-        except Exception as e:
-            return {"models": []}
 
 @app.post("/start-recording")
 async def start_recording():
@@ -204,16 +152,28 @@ async def stop_tts():
 async def tts_status():
     return {"status": "running", "is_speaking": tts_service.is_speaking}
 
+
+
+
+@app.get("/memory/synthetic")
+async def get_synthetic_memory():
+    try:
+        summaries = synthetic_memory.get_summaries()
+        return {"status": "ok", "summaries": summaries}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+
+
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     return response
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
-
-
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000)
