@@ -127,12 +127,14 @@ async def start_recording():
 async def stop_recording():
     voice_service.stop_recording()
     return {"status": "stopped"}
+    
 
 @app.get("/get-transcription")
 async def get_transcription():
     while voice_service.is_processing:
         await asyncio.sleep(0.1)
     return {"text": voice_service.get_transcription()}
+    
 
 @app.post("/speak")
 async def speak(request: Request):
