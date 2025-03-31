@@ -1,19 +1,27 @@
 // script-ui.js - Gestion de l'interface utilisateur
+// Ce fichier s'occupe uniquement de l'interface utilisateur et des interactions
 
+// Éléments DOM principaux
 const chatContainer = document.getElementById('chat-container');
 const messageInput = document.getElementById('message-input');
 const modelSelect = document.getElementById('model-select');
 const aiCircle = document.getElementById('ai-circle');
 const micButton = document.getElementById('mic-button');
 const micButtonStream = document.getElementById('mic-button-stream');
+const ttsBtnIcon = document.getElementById('tts-icon');
+const modeToggleButton = document.getElementById('mode-switch-button');
 
+// État de l'application
 let conversationHistory = [];
 let currentState = 'idle';
 let isRecording = false;
 let isRecordingStream = false;
 const VOICE_SERVICE_URL = 'http://localhost:5001';
 
-// Fonction pour gérer l'état de la visualisation
+/**
+ * Change l'état visuel de l'IA
+ * @param {string} state - État à définir ('idle', 'listening', 'thinking', 'responding', 'working')
+ */
 function setAIState(state) {
     // Supprimer toutes les classes d'état
     aiCircle.classList.remove('idle', 'listening', 'thinking', 'responding', 'working');
@@ -31,13 +39,18 @@ function setAIState(state) {
     }
 }
 
-// Créer des particules pour l'animation de réflexion
+/**
+ * Crée des particules animées pour l'état "thinking"
+ */
 function createParticles() {
     // Supprimer les particules existantes
     document.querySelectorAll('.particle').forEach(p => p.remove());
     
+    // Nombre de particules
+    const particleCount = 12;
+    
     // Créer de nouvelles particules
-    for(let i = 0; i < 12; i++) {
+    for(let i = 0; i < particleCount; i++) {
         const particle = document.createElement('div');
         particle.className = 'particle';
         
@@ -47,7 +60,7 @@ function createParticles() {
         particle.style.transform = 'translate(-50%, -50%)';
         
         // Animation dynamique pour chaque particule
-        const angle = i * (360 / 12);
+        const angle = i * (360 / particleCount);
         const distance = 40 + Math.random() * 20;
         const duration = 2 + Math.random() * 3;
         const delay = Math.random() * 0.5;
@@ -80,41 +93,48 @@ function createParticles() {
     }
 }
 
-// Charger les modèles disponibles
+/**
+ * Charge les modèles disponibles depuis l'API
+ */
 async function loadModels() {
     try {
         const response = await fetch('/models');
         const data = await response.json();
         
-        // Effacer les options existantes
-        modelSelect.innerHTML = '';
-        
-        // Ajouter les modèles
-        data.models.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model.name;
-            option.textContent = model.name;
-            modelSelect.appendChild(option);
-        });
-        
-        // Sélectionner llama3 par défaut si disponible
-        const llama3Option = Array.from(modelSelect.options).find(option => option.value.includes('llama3'));
-        if (llama3Option) llama3Option.selected = true;
-        
+        if (data.models && data.models.length > 0) {
+            // Effacer les options existantes
+            modelSelect.innerHTML = '';
+            
+            // Ajouter les modèles
+            data.models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.name;
+                option.textContent = model.name;
+                modelSelect.appendChild(option);
+            });
+            
+            // Sélectionner llama3 par défaut si disponible
+            const llama3Option = Array.from(modelSelect.options).find(
+                option => option.value.includes('llama3')
+            );
+            if (llama3Option) llama3Option.selected = true;
+        } else {
+            throw new Error('Aucun modèle trouvé');
+        }
     } catch (error) {
         console.error('Erreur lors du chargement des modèles:', error);
         
-        // Ajouter manuellement quelques modèles en cas d'erreur
+        // Ajouter des modèles par défaut en cas d'erreur
         modelSelect.innerHTML = '';
         
-        const models = [
+        const defaultModels = [
             "llama3:latest",
             "mistral:latest",
             "phi:latest",
             "zephyr:latest"
         ];
         
-        models.forEach(modelName => {
+        defaultModels.forEach(modelName => {
             const option = document.createElement('option');
             option.value = modelName;
             option.textContent = modelName;
@@ -129,17 +149,33 @@ async function loadModels() {
     }
 }
 
+/**
+ * Ajoute un message à la conversation
+ * @param {string} role - Rôle du message ('user', 'assistant', 'system')
+ * @param {string} message - Contenu du message
+ * @returns {HTMLElement} - Élément du message ajouté
+ */
 function addMessage(role, message) {
+    if (!message) return null;
+    
     const messageElement = document.createElement('div');
     messageElement.className = `message ${role}-message`;
     messageElement.innerText = message;
     chatContainer.appendChild(messageElement);
+    
+    // Faire défiler vers le bas pour voir le dernier message
     chatContainer.scrollTop = chatContainer.scrollHeight;
+    
     return messageElement;
 }
 
-// Fonction pour traiter un message de chat (texte ou vocal) - Mode classique
+/**
+ * Traite un message de chat (mode classique)
+ * @param {string} message - Message à envoyer
+ */
 async function processChatMessage(message) {
+    if (!message) return;
+    
     try {
         setAIState('thinking');
         
@@ -153,6 +189,10 @@ async function processChatMessage(message) {
             })
         });
 
+        if (!response.ok) {
+            throw new Error(`Erreur: ${response.status}`);
+        }
+
         const data = await response.json();
         
         // Mettre à jour l'historique
@@ -164,8 +204,10 @@ async function processChatMessage(message) {
         // Afficher la réponse
         addMessage('assistant', data.response);
         
-        // Synthétiser la réponse en mode complet
-        await speechService.speak(data.response);
+        // Synthétiser la réponse en utilisant le service de synthèse vocale
+        if (window.speechService) {
+            window.speechService.speak(data.response);
+        }
         
         // Revenir à l'état d'attente après un délai
         setTimeout(() => {
@@ -175,14 +217,19 @@ async function processChatMessage(message) {
         }, 2000);
         
     } catch (error) {
-        console.error('Erreur:', error);
+        console.error('Erreur lors du traitement du message:', error);
         addMessage('system', 'Erreur de communication avec l\'assistant');
         setAIState('idle');
     }
 }
 
-// Fonction pour traiter un message de chat en streaming
+/**
+ * Traite un message de chat en mode streaming
+ * @param {string} message - Message à envoyer
+ */
 async function processChatMessageStreaming(message) {
+    if (!message) return;
+    
     try {
         // Changer l'état à "réflexion"
         setAIState('thinking');
@@ -191,8 +238,6 @@ async function processChatMessageStreaming(message) {
         const messageElement = document.createElement('div');
         messageElement.className = 'message assistant-message';
         chatContainer.appendChild(messageElement);
-        
-        // Faire défiler vers le bas pour voir la réponse
         chatContainer.scrollTop = chatContainer.scrollHeight;
         
         // Envoyer la requête et obtenir la réponse en streaming
@@ -208,7 +253,7 @@ async function processChatMessageStreaming(message) {
         
         // Vérifier si la réponse est OK
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw new Error(`Erreur HTTP: ${response.status}`);
         }
         
         // Changer l'état à "réponse" dès qu'on commence à recevoir des données
@@ -217,7 +262,6 @@ async function processChatMessageStreaming(message) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let responseText = "";
-        let pendingText = "";
         
         // Lire la réponse en streaming
         while (true) {
@@ -240,32 +284,16 @@ async function processChatMessageStreaming(message) {
                             messageElement.innerText = responseText;
                             chatContainer.scrollTop = chatContainer.scrollHeight;
                             
-                            // Accumuler du texte pour la synthèse
-                            pendingText += data.chunk;
-                            
-                            // Chercher une fin de phrase naturelle
-                            const sentenceBreak = /[.!?。：；]\s*/.exec(pendingText);
-                            if (sentenceBreak && sentenceBreak.index > 0) {
-                                // Extraire la phrase complète
-                                const sentence = pendingText.substring(0, sentenceBreak.index + 1);
-                                
-                                // Synthétiser cette phrase
-                                speechService.speak(sentence, true);
-                                
-                                // Garder uniquement le reste pour la prochaine itération
-                                pendingText = pendingText.substring(sentenceBreak.index + 1);
-                            }
-                            // Si beaucoup de texte s'accumule sans point, le synthétiser quand même
-                            else if (pendingText.length > 80) {
-                                speechService.speak(pendingText, true);
-                                pendingText = "";
+                            // Envoyer le fragment au service de synthèse vocale
+                            if (window.speechService) {
+                                window.speechService.handleStreamedText(data.chunk, false);
                             }
                         } 
                         // Si c'est la fin du streaming
                         else if (data.done) {
-                            // Synthétiser le reste du texte non prononcé
-                            if (pendingText) {
-                                speechService.speak(pendingText, true);
+                            // Synthétiser les derniers fragments si nécessaire
+                            if (window.speechService) {
+                                window.speechService.handleStreamedText("", true);
                             }
                             
                             // Mettre à jour l'historique de conversation
@@ -280,7 +308,7 @@ async function processChatMessageStreaming(message) {
                         }
                         // Si c'est une erreur
                         else if (data.error) {
-                            console.error('Erreur:', data.error);
+                            console.error('Erreur streaming:', data.error);
                             messageElement.innerText = 'Erreur de communication avec l\'assistant';
                             setAIState('idle');
                         }
@@ -291,12 +319,15 @@ async function processChatMessageStreaming(message) {
             }
         }
     } catch (error) {
-        console.error('Erreur:', error);
+        console.error('Erreur lors du traitement du message streaming:', error);
         addMessage('system', 'Erreur de communication avec l\'assistant');
         setAIState('idle');
     }
 }
 
+/**
+ * Envoie un message en mode standard
+ */
 async function sendMessage() {
     const message = messageInput.value.trim();
     if (!message) return;
@@ -304,10 +335,12 @@ async function sendMessage() {
     addMessage('user', message);
     messageInput.value = '';
     
-    // Mode par défaut (non-streaming)
     await processChatMessage(message);
 }
 
+/**
+ * Envoie un message en mode streaming
+ */
 async function sendMessageStreaming() {
     const message = messageInput.value.trim();
     if (!message) return;
@@ -315,11 +348,12 @@ async function sendMessageStreaming() {
     addMessage('user', message);
     messageInput.value = '';
     
-    // Mode streaming
     await processChatMessageStreaming(message);
 }
 
-// Gestion de l'enregistrement vocal avec correction pour le timing - Mode classique
+/**
+ * Gère l'enregistrement vocal en mode classique
+ */
 async function toggleRecording() {
     if (!isRecording) {
         // Démarrer l'enregistrement
@@ -332,7 +366,6 @@ async function toggleRecording() {
                 method: 'POST'
             });
             
-            // Ajouter un message pour indiquer que l'assistant écoute
             addMessage('system', 'Écoute en cours... Parlez maintenant.');
         } catch (error) {
             console.error('Erreur lors du démarrage de l\'enregistrement:', error);
@@ -347,8 +380,10 @@ async function toggleRecording() {
         setAIState('thinking');
         
         try {
-            // Informer l'utilisateur de l'attente
-            chatContainer.removeChild(chatContainer.lastChild);
+            // Remplacer le message d'écoute par un message d'attente
+            if (chatContainer.lastChild) {
+                chatContainer.removeChild(chatContainer.lastChild);
+            }
             addMessage('system', 'Transcription en cours... Veuillez patienter.');
             
             // Envoyer la requête d'arrêt
@@ -356,33 +391,21 @@ async function toggleRecording() {
                 method: 'POST'
             });
             
-            // Attendre 3 secondes pour laisser le temps à whisper de traiter l'audio
+            // Attendre que le service traite l'audio
             await new Promise(resolve => setTimeout(resolve, 3000));
             
             // Récupérer la transcription avec plusieurs tentatives
-            let attempts = 0;
-            let maxAttempts = 5;
-            let transcription = "";
-            
-            while (attempts < maxAttempts && !transcription) {
-                const response = await fetch(`${VOICE_SERVICE_URL}/get-transcription`);
-                const data = await response.json();
-                transcription = data.text;
-                
-                if (!transcription) {
-                    // Attendre encore un peu et réessayer
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    attempts++;
-                }
-            }
+            let transcription = await getTranscriptionWithRetry(5);
             
             // Remplacer le message d'attente
-            chatContainer.removeChild(chatContainer.lastChild);
+            if (chatContainer.lastChild) {
+                chatContainer.removeChild(chatContainer.lastChild);
+            }
             
             if (transcription) {
                 // Afficher la transcription et envoyer au modèle
                 addMessage('user', transcription);
-                processChatMessage(transcription);
+                await processChatMessage(transcription);
             } else {
                 addMessage('system', 'Aucun texte détecté. Veuillez réessayer.');
                 setAIState('idle');
@@ -394,7 +417,9 @@ async function toggleRecording() {
     }
 }
 
-// Gestion de l'enregistrement vocal en mode streaming
+/**
+ * Gère l'enregistrement vocal en mode streaming
+ */
 async function toggleRecordingStream() {
     if (!isRecordingStream) {
         // Démarrer l'enregistrement
@@ -408,10 +433,9 @@ async function toggleRecordingStream() {
                 method: 'POST'
             });
             
-            // Ajouter un message pour indiquer que l'assistant écoute
             addMessage('system', 'Écoute en cours (mode streaming)... Parlez maintenant.');
         } catch (error) {
-            console.error('Erreur lors du démarrage de l\'enregistrement:', error);
+            console.error('Erreur lors du démarrage de l\'enregistrement streaming:', error);
             isRecordingStream = false;
             micButtonStream.classList.remove('recording');
             micButtonStream.classList.remove('streaming');
@@ -424,8 +448,10 @@ async function toggleRecordingStream() {
         setAIState('thinking');
         
         try {
-            // Informer l'utilisateur de l'attente
-            chatContainer.removeChild(chatContainer.lastChild);
+            // Remplacer le message d'écoute par un message d'attente
+            if (chatContainer.lastChild) {
+                chatContainer.removeChild(chatContainer.lastChild);
+            }
             addMessage('system', 'Transcription en cours... Veuillez patienter.');
             
             // Envoyer la requête d'arrêt
@@ -433,33 +459,21 @@ async function toggleRecordingStream() {
                 method: 'POST'
             });
             
-            // Attendre 3 secondes pour laisser le temps à whisper de traiter l'audio
+            // Attendre que le service traite l'audio
             await new Promise(resolve => setTimeout(resolve, 3000));
             
             // Récupérer la transcription avec plusieurs tentatives
-            let attempts = 0;
-            let maxAttempts = 5;
-            let transcription = "";
-            
-            while (attempts < maxAttempts && !transcription) {
-                const response = await fetch(`${VOICE_SERVICE_URL}/get-transcription`);
-                const data = await response.json();
-                transcription = data.text;
-                
-                if (!transcription) {
-                    // Attendre encore un peu et réessayer
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    attempts++;
-                }
-            }
+            let transcription = await getTranscriptionWithRetry(5);
             
             // Remplacer le message d'attente
-            chatContainer.removeChild(chatContainer.lastChild);
+            if (chatContainer.lastChild) {
+                chatContainer.removeChild(chatContainer.lastChild);
+            }
             
             if (transcription) {
                 // Afficher la transcription et envoyer au modèle en mode streaming
                 addMessage('user', transcription);
-                processChatMessageStreaming(transcription);
+                await processChatMessageStreaming(transcription);
             } else {
                 addMessage('system', 'Aucun texte détecté. Veuillez réessayer.');
                 setAIState('idle');
@@ -468,14 +482,50 @@ async function toggleRecordingStream() {
             // Désactiver l'indicateur de streaming
             micButtonStream.classList.remove('streaming');
         } catch (error) {
-            console.error('Erreur lors de l\'arrêt de l\'enregistrement:', error);
+            console.error('Erreur lors de l\'arrêt de l\'enregistrement streaming:', error);
             setAIState('idle');
             micButtonStream.classList.remove('streaming');
         }
     }
 }
 
-// Fonction pour basculer entre les modes de conversation
+/**
+ * Récupère la transcription avec plusieurs tentatives
+ * @param {number} maxAttempts - Nombre maximum de tentatives
+ * @returns {Promise<string>} - La transcription ou une chaîne vide
+ */
+async function getTranscriptionWithRetry(maxAttempts = 5) {
+    let attempts = 0;
+    let transcription = "";
+    
+    while (attempts < maxAttempts && !transcription) {
+        try {
+            const response = await fetch(`${VOICE_SERVICE_URL}/get-transcription`);
+            if (!response.ok) {
+                throw new Error(`Erreur de récupération: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            transcription = data.text || "";
+            
+            if (!transcription) {
+                // Attendre avant de réessayer
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                attempts++;
+            }
+        } catch (error) {
+            console.error(`Tentative ${attempts + 1} échouée:`, error);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            attempts++;
+        }
+    }
+    
+    return transcription;
+}
+
+/**
+ * Bascule entre les modes de conversation (texte/vocal)
+ */
 function toggleConversationMode() {
     const body = document.body;
     const chatIcon = document.getElementById('chat-icon');
@@ -495,10 +545,8 @@ function toggleConversationMode() {
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }, 500);
         
-        // Ajouter un message d'information
         addMessage('system', 'Mode vocal activé. Cliquez sur le micro pour parler.');
     } else {
-        // Revenir au mode chat
         addMessage('system', 'Mode conversation activé.');
     }
     
@@ -506,47 +554,93 @@ function toggleConversationMode() {
     setAIState(currentState);
 }
 
-// Simuler l'état "travail" lorsque l'utilisateur commence à taper
-messageInput.addEventListener('focus', () => {
-    if (currentState === 'idle') {
-        setAIState('working');
+/**
+ * Bascule l'état de la synthèse vocale
+ */
+function toggleTTS() {
+    if (!window.speechService) return;
+    
+    const enabled = window.speechService.toggle();
+    
+    if (ttsBtnIcon) {
+        if (enabled) {
+            ttsBtnIcon.classList.remove('disabled');
+            addMessage('system', 'Synthèse vocale activée');
+        } else {
+            ttsBtnIcon.classList.add('disabled');
+            addMessage('system', 'Synthèse vocale désactivée');
+        }
     }
-});
+}
 
-messageInput.addEventListener('blur', () => {
-    if (currentState === 'working' && messageInput.value.trim() === '') {
-        setAIState('idle');
-    }
-});
-
-messageInput.addEventListener('keypress', (e) => {
-    // Si l'utilisateur tape, passer en mode "écoute"
-    if (messageInput.value.trim().length > 0) {
-        setAIState('listening');
+// Gestionnaires d'événements pour l'interface utilisateur
+function setupEventListeners() {
+    // Gestion de la saisie de texte
+    if (messageInput) {
+        messageInput.addEventListener('focus', () => {
+            if (currentState === 'idle') {
+                setAIState('working');
+            }
+        });
+        
+        messageInput.addEventListener('blur', () => {
+            if (currentState === 'working' && messageInput.value.trim() === '') {
+                setAIState('idle');
+            }
+        });
+        
+        messageInput.addEventListener('keypress', (e) => {
+            // Si l'utilisateur tape, passer en mode "écoute"
+            if (messageInput.value.trim().length > 0) {
+                setAIState('listening');
+            }
+            
+            if (e.key === 'Enter') {
+                // Vérifier si la touche Shift est enfoncée pour utiliser le mode streaming
+                if (e.shiftKey) {
+                    sendMessageStreaming();
+                } else {
+                    sendMessage();
+                }
+                e.preventDefault();
+            }
+        });
     }
     
-    if (e.key === 'Enter') {
-        // Vérifier si la touche Shift est enfoncée pour utiliser le mode streaming
-        if (e.shiftKey) {
-            sendMessageStreaming();
-        } else {
-            sendMessage();
-        }
-        e.preventDefault();
+    // Boutons d'interface
+    if (micButton) {
+        micButton.addEventListener('click', toggleRecording);
     }
-});
+    
+    if (micButtonStream) {
+        micButtonStream.addEventListener('click', toggleRecordingStream);
+    }
+    
+    if (modeToggleButton) {
+        modeToggleButton.addEventListener('click', toggleConversationMode);
+    }
+    
+    // Bouton TTS (peut être présent ou non selon la configuration)
+    const ttsButton = document.getElementById('tts-button');
+    if (ttsButton) {
+        ttsButton.addEventListener('click', toggleTTS);
+    }
+}
 
-// Initialisation
-document.addEventListener('DOMContentLoaded', function() {
+// Initialisation de l'application
+function initialize() {
+    // Charger les modèles disponibles
     loadModels();
+    
+    // Définir l'état initial
     setAIState('idle');
     
-    // Ajouter les écouteurs d'événements
-    micButton.addEventListener('click', toggleRecording);
-    micButtonStream.addEventListener('click', toggleRecordingStream);
-    document.getElementById('mode-switch-button').addEventListener('click', toggleConversationMode);
-    document.getElementById('tts-button').addEventListener('click', toggleTTS);
+    // Configurer les écouteurs d'événements
+    setupEventListeners();
     
-    // Ajouter un message d'information sur les deux modes
-    addMessage('system', 'Deux modes disponibles : Micro bleu (standard) et Micro violet (streaming). Utilisez Shift+Enter pour tester le streaming en mode texte.');
-});
+    // Message de bienvenue
+    addMessage('system', 'Assistant IA Local initialisé. Deux modes disponibles: Micro bleu (standard) et Micro violet (streaming). Utilisez Shift+Enter pour tester le streaming en mode texte.');
+}
+
+// Démarrer l'application lorsque le DOM est chargé
+document.addEventListener('DOMContentLoaded', initialize);

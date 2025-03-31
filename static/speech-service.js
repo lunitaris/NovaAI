@@ -1,34 +1,74 @@
 // speech-service.js - Service de synthèse vocale optimisé
 
+/**
+ * Service de gestion de la synthèse vocale
+ * Centralise toutes les fonctionnalités liées à la synthèse vocale
+ */
+
 const TTS_SERVICE_URL = 'http://localhost:5002';
+
+// Constantes et variables d'état
+const SENTENCE_DELIMITERS = ['.', '!', '?', ':', ';', '\n'];
+const MIN_CHUNK_LENGTH = 50;
+const STATUS_CHECK_INTERVAL = 300; // ms entre les vérifications de statut
+const MAX_STATUS_CHECKS = 30; // Nombre maximum de vérifications de statut
+
+// État interne du service
 let ttsEnabled = true;
 let pendingSpeech = false;
 let pendingTextFragments = [];
-let streamingMode = false;
-let processingTimeout = null;
+let statusCheckCount = 0;
 
-// Service de synthèse vocale
+/**
+ * Service de synthèse vocale exposé à l'application
+ */
 const speechService = {
     /**
-     * Synthétise un texte en audio
+     * Vérifie si la synthèse vocale est activée
+     * @returns {boolean} - État de la synthèse vocale
+     */
+    isEnabled: function() {
+        return ttsEnabled;
+    },
+
+    /**
+     * Active ou désactive la synthèse vocale
+     * @returns {boolean} - Nouvel état de la synthèse vocale
+     */
+    toggle: function() {
+        ttsEnabled = !ttsEnabled;
+        if (!ttsEnabled) {
+            this.stop();
+            this.reset();
+        }
+        return ttsEnabled;
+    },
+
+    /**
+     * Réinitialise l'état du service
+     */
+    reset: function() {
+        pendingTextFragments = [];
+        pendingSpeech = false;
+        statusCheckCount = 0;
+    },
+
+    /**
+     * Parle un texte complet (mode non-streaming)
      * @param {string} text - Texte à synthétiser
-     * @param {boolean} isStreaming - Mode streaming ou complet
      * @returns {Promise} - Promesse résolue lorsque la requête est envoyée
      */
-    speak: async function(text, isStreaming = false) {
-        if (!ttsEnabled || !text) return;
+    speak: async function(text) {
+        if (!ttsEnabled || !text || text.trim() === '') return;
         
-        // En mode streaming, nous accumulons les fragments de texte
-        if (isStreaming) {
-            this.accumulateTextFragment(text);
-            return;
+        // Attendre que toute synthèse en cours soit terminée
+        if (pendingSpeech) {
+            await this.waitForPreviousSpeech();
         }
-        
-        // Mode normal (non-streaming)
-        if (pendingSpeech) return;
-        
+
         try {
             pendingSpeech = true;
+            statusCheckCount = 0;
             
             const response = await fetch(`${TTS_SERVICE_URL}/speak`, {
                 method: 'POST',
@@ -37,99 +77,88 @@ const speechService = {
             });
             
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Erreur TTS (${response.status}):`, errorText);
+                console.error(`Erreur TTS (${response.status}):`, await response.text());
+                pendingSpeech = false;
+                return;
             }
+            
+            // Démarrer la vérification de l'état de la parole
+            this.checkSpeakingStatus();
         } catch (error) {
             console.error('Erreur TTS:', error);
-        } finally {
             pendingSpeech = false;
         }
     },
     
     /**
-     * Accumule les fragments de texte et les traite intelligemment
-     * pour éviter les coupures au milieu des phrases
-     * @param {string} textFragment - Fragment de texte à accumuler
+     * Gère le texte reçu en streaming pour une synthèse vocale fluide
+     * @param {string} textFragment - Fragment de texte reçu
+     * @param {boolean} isComplete - Indique si c'est le dernier fragment
      */
-    accumulateTextFragment: function(textFragment) {
-        // Ajouter ce fragment à notre liste
+    handleStreamedText: function(textFragment, isComplete = false) {
+        if (!ttsEnabled || !textFragment) return;
+        
         pendingTextFragments.push(textFragment);
         
-        // Indiquer qu'on est en mode streaming
-        streamingMode = true;
+        // Rejoindre tous les fragments pour avoir le texte accumulé
+        const combinedText = pendingTextFragments.join(' ').trim();
         
-        // Nettoyer les espaces et sauts de ligne excessifs dans les fragments
-        const cleanedFragments = pendingTextFragments.map(f => 
-            f.trim().replace(/\s+/g, ' ')
-        );
-        
-        // Rejoindre tous les fragments pour avoir le texte complet accumulé
-        const combinedText = cleanedFragments.join(' ').trim();
-        
-        // Si nous avons un minuteur en cours, l'annuler
-        if (processingTimeout) {
-            clearTimeout(processingTimeout);
-        }
-        
-        // Logique pour détecter des phrases complètes dans le texte accumulé
-        const sentenceEndPattern = /[.!?।।;](\s|$)/;
-        
-        // Trouver la dernière fin de phrase dans le texte combiné
-        const lastSentenceEnd = this.findLastSentenceEnd(combinedText);
-        
-        if (lastSentenceEnd > 0) {
-            // On a au moins une phrase complète
-            const completeText = combinedText.substring(0, lastSentenceEnd + 1);
-            const remainingText = combinedText.substring(lastSentenceEnd + 1).trim();
-            
-            // Envoyer la partie complète
-            this.sendTextToSynthesize(completeText);
-            
-            // Garder le reste pour plus tard
-            pendingTextFragments = remainingText ? [remainingText] : [];
-        } else {
-            // Pas de phrase complète, mais vérifier si nous avons beaucoup de texte déjà
-            // ou s'il y a une pause probable (comme un saut de ligne)
-            if (combinedText.length > 100 || combinedText.includes("\n")) {
+        if (isComplete) {
+            // Si c'est le dernier fragment, synthétiser tout le texte restant
+            if (combinedText) {
                 this.sendTextToSynthesize(combinedText);
                 pendingTextFragments = [];
             }
+            return;
         }
         
-        // Définir un délai pour traiter le reste s'il y a un retard dans les prochains fragments
-        processingTimeout = setTimeout(() => {
-            if (pendingTextFragments.length > 0) {
-                const remainingText = pendingTextFragments.join(' ').trim();
-                if (remainingText) {
-                    this.sendTextToSynthesize(remainingText);
-                }
-                pendingTextFragments = [];
+        // Chercher une fin de phrase naturelle
+        const lastSentenceEnd = this.findLastCompletePhrase(combinedText);
+        
+        if (lastSentenceEnd > 0) {
+            // Extraire la partie complète pour synthèse
+            const completeText = combinedText.substring(0, lastSentenceEnd + 1).trim();
+            const remainingText = combinedText.substring(lastSentenceEnd + 1).trim();
+            
+            if (completeText) {
+                this.sendTextToSynthesize(completeText);
             }
-            streamingMode = false;
-        }, 500);
+            
+            // Garder le reste pour plus tard
+            pendingTextFragments = remainingText ? [remainingText] : [];
+        } 
+        // Si pas de fin de phrase mais beaucoup de texte accumulé, prononcer quand même
+        else if (combinedText.length > MIN_CHUNK_LENGTH) {
+            this.sendTextToSynthesize(combinedText);
+            pendingTextFragments = [];
+        }
     },
     
     /**
-     * Trouve l'index de la dernière fin de phrase dans un texte
+     * Trouve la dernière phrase complète dans un texte
      * @param {string} text - Texte à analyser
-     * @returns {number} - Position de la dernière fin de phrase, ou -1 si aucune trouvée
+     * @returns {number} - Position de la dernière fin de phrase
      */
-    findLastSentenceEnd: function(text) {
-        // Ponctuation qui indique la fin d'une phrase
-        const endMarkers = ['.', '!', '?', ':', ';'];
+    findLastCompletePhrase: function(text) {
+        if (!text) return -1;
+        
         let lastIndex = -1;
         
-        // Chercher la dernière occurrence de chaque marqueur
-        for (const marker of endMarkers) {
-            const idx = text.lastIndexOf(marker);
+        // Chercher la dernière occurrence de chaque délimiteur
+        for (const delimiter of SENTENCE_DELIMITERS) {
+            const idx = text.lastIndexOf(delimiter);
             if (idx > lastIndex) {
-                // Vérifier que ce n'est pas une abréviation (ex: "Dr.")
-                if (marker === '.' && idx > 0 && idx < text.length - 1) {
-                    // Si la lettre avant est minuscule et la lettre après est majuscule,
-                    // c'est probablement une vraie fin de phrase
+                // Vérifier que ce n'est pas dans une abréviation
+                if (delimiter === '.' && idx > 0 && idx < text.length - 1) {
+                    // Vérifier si c'est suivi d'un espace ou d'une fin de texte
                     const nextCharIsSpace = idx === text.length - 1 || /\s/.test(text[idx + 1]);
-                    if (nextCharIsSpace) {
+                    // Vérifier que ce n'est pas une abréviation courante
+                    const prevText = text.substring(Math.max(0, idx - 5), idx).toLowerCase();
+                    const isAbbreviation = ['m.', 'mr.', 'dr.', 'ms.', 'mme.', 'etc.', 'ex.'].some(
+                        abbr => prevText.endsWith(abbr.slice(0, -1))
+                    );
+                    
+                    if (nextCharIsSpace && !isAbbreviation) {
                         lastIndex = idx;
                     }
                 } else {
@@ -142,7 +171,7 @@ const speechService = {
     },
     
     /**
-     * Envoie réellement le texte au service TTS
+     * Envoie le texte au service TTS
      * @param {string} text - Texte à synthétiser
      * @private
      */
@@ -150,12 +179,13 @@ const speechService = {
         if (!text || !ttsEnabled) return;
         
         try {
-            // Éviter les chevauchements dans le mode streaming
+            // Éviter les chevauchements
             if (pendingSpeech) {
-                await this.waitForPreviousSpeech(100, 2000); // Attendre max 2 secondes
+                await this.waitForPreviousSpeech();
             }
             
             pendingSpeech = true;
+            statusCheckCount = 0;
             
             const response = await fetch(`${TTS_SERVICE_URL}/speak`, {
                 method: 'POST',
@@ -165,51 +195,31 @@ const speechService = {
             
             if (!response.ok) {
                 console.error(`Erreur TTS (${response.status}):`, await response.text());
+                pendingSpeech = false;
+                return;
             }
+            
+            // Démarrer la vérification de l'état
+            this.checkSpeakingStatus();
         } catch (error) {
             console.error('Erreur lors de la synthèse:', error);
-        } finally {
-            // On ne met pas pendingSpeech à false ici, cela sera fait dans checkSpeakingStatus
-            // Démarrer la vérification de l'état de la parole
-            this.checkSpeakingStatus();
+            pendingSpeech = false;
         }
     },
     
     /**
-     * Attend que la synthèse précédente soit terminée
-     * @param {number} interval - Intervalle entre les vérifications
-     * @param {number} timeout - Délai maximum d'attente
-     * @returns {Promise} - Promesse résolue quand la synthèse est terminée ou le délai expiré
-     * @private
-     */
-    waitForPreviousSpeech: function(interval, timeout) {
-        return new Promise((resolve) => {
-            const startTime = Date.now();
-            
-            const checkStatus = () => {
-                if (!pendingSpeech) {
-                    resolve();
-                    return;
-                }
-                
-                if (Date.now() - startTime > timeout) {
-                    // Délai expiré, continuer quand même
-                    resolve();
-                    return;
-                }
-                
-                setTimeout(checkStatus, interval);
-            };
-            
-            checkStatus();
-        });
-    },
-    
-    /**
-     * Vérifie périodiquement si la synthèse est terminée
+     * Vérifie si la synthèse est terminée
      * @private
      */
     checkSpeakingStatus: async function() {
+        if (statusCheckCount >= MAX_STATUS_CHECKS) {
+            // Limite de vérifications atteinte, considérer que la synthèse est terminée
+            pendingSpeech = false;
+            return;
+        }
+        
+        statusCheckCount++;
+        
         try {
             const response = await fetch(`${TTS_SERVICE_URL}/status`);
             if (response.ok) {
@@ -220,8 +230,11 @@ const speechService = {
                     return;
                 }
                 
-                // Vérifier à nouveau après un court délai
-                setTimeout(() => this.checkSpeakingStatus(), 100);
+                // Vérifier à nouveau après un délai
+                setTimeout(() => this.checkSpeakingStatus(), STATUS_CHECK_INTERVAL);
+            } else {
+                // En cas d'erreur, considérer que la synthèse est terminée
+                pendingSpeech = false;
             }
         } catch (error) {
             console.error('Erreur de vérification du statut:', error);
@@ -230,40 +243,53 @@ const speechService = {
     },
     
     /**
+     * Attend que la synthèse précédente soit terminée
+     * @returns {Promise} - Promesse résolue quand la synthèse est terminée
+     * @private
+     */
+    waitForPreviousSpeech: function() {
+        return new Promise((resolve) => {
+            const checkInterval = 100;
+            const maxWaitTime = 3000;
+            const startTime = Date.now();
+            
+            const checkStatus = () => {
+                if (!pendingSpeech) {
+                    resolve();
+                    return;
+                }
+                
+                if (Date.now() - startTime > maxWaitTime) {
+                    // Timeout atteint, forcer la résolution
+                    pendingSpeech = false;
+                    resolve();
+                    return;
+                }
+                
+                setTimeout(checkStatus, checkInterval);
+            };
+            
+            checkStatus();
+        });
+    },
+    
+    /**
      * Arrête la synthèse vocale en cours
      * @returns {Promise} - Promesse résolue lorsque la synthèse est arrêtée
      */
     stop: async function() {
         try {
-            // Arrêter l'accumulation de texte
             pendingTextFragments = [];
-            if (processingTimeout) {
-                clearTimeout(processingTimeout);
-                processingTimeout = null;
-            }
-            
-            streamingMode = false;
             
             const response = await fetch(`${TTS_SERVICE_URL}/stop`, { method: 'POST' });
             pendingSpeech = false;
+            statusCheckCount = 0;
             return response.ok;
         } catch (error) {
             console.error('Erreur lors de l\'arrêt de la synthèse:', error);
             pendingSpeech = false;
             return false;
         }
-    },
-    
-    /**
-     * Active/désactive la synthèse vocale
-     * @returns {boolean} - Nouvel état (activé/désactivé)
-     */
-    toggle: function() {
-        ttsEnabled = !ttsEnabled;
-        if (!ttsEnabled) {
-            this.stop();
-        }
-        return ttsEnabled;
     },
     
     /**
@@ -282,46 +308,23 @@ const speechService = {
             console.error('Erreur de vérification du service TTS:', error);
             return false;
         }
-    },
-    
-    /**
-     * Réinitialise l'état du service (utile en cas de changement de contexte)
-     */
-    reset: function() {
-        pendingTextFragments = [];
-        if (processingTimeout) {
-            clearTimeout(processingTimeout);
-            processingTimeout = null;
-        }
-        streamingMode = false;
     }
 };
-
-// Fonction appelée par le bouton dans l'interface
-function toggleTTS() {
-    const enabled = speechService.toggle();
-    
-    // Mettre à jour l'interface
-    const ttsBtnIcon = document.getElementById('tts-icon');
-    if (enabled) {
-        ttsBtnIcon.classList.remove('disabled');
-        addMessage('system', 'Synthèse vocale activée');
-    } else {
-        ttsBtnIcon.classList.add('disabled');
-        addMessage('system', 'Synthèse vocale désactivée');
-        
-        // Arrêter toute synthèse vocale en cours
-        speechService.stop();
-    }
-}
 
 // Vérifier la disponibilité du service TTS au chargement
 document.addEventListener('DOMContentLoaded', async function() {
     const available = await speechService.checkAvailability();
     if (!available) {
         console.warn('Le service TTS ne semble pas disponible. La synthèse vocale pourrait ne pas fonctionner correctement.');
-        const ttsBtnIcon = document.getElementById('tts-icon');
-        ttsBtnIcon.classList.add('disabled');
         ttsEnabled = false;
+        
+        // Mettre à jour l'interface si le bouton TTS existe
+        const ttsBtnIcon = document.getElementById('tts-icon');
+        if (ttsBtnIcon) {
+            ttsBtnIcon.classList.add('disabled');
+        }
     }
 });
+
+// Exporter le service
+window.speechService = speechService;
