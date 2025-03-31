@@ -15,7 +15,7 @@ logger = logging.getLogger("voice-module")
 class VoiceRecognitionService:
     def __init__(self):
         self.q = queue.Queue()
-        self.vad = webrtcvad.Vad(2)  # Niveau d'agressivité (0–3)
+        self.vad = webrtcvad.Vad(1)  # Niveau d'agressivité (0–3)
         self.sample_rate = 16000
         self.block_duration = 30  # ms
         self.block_size = int(self.sample_rate * self.block_duration / 1000)
@@ -86,23 +86,40 @@ class VoiceRecognitionService:
         self.is_processing = True
         start = time.time()
         try:
-            result = subprocess.run([
+            cmd = [
                 "opt/whisper.cpp/build/bin/whisper-cli",
-                "-m", "./whisper.cpp/models/ggml-base.en.bin",
+                "-m", "opt/whisper.cpp/models/ggml-base.bin",  # Chemin corrigé
                 "-f", self.output_path,
+                "-l", "fr",  # Spécifier le français
                 "-otxt",
                 "-of", self.output_path
-            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            ]
+            logger.info(f"Exécution de la commande: {' '.join(cmd)}")
+            
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            
+            if result.returncode != 0:
+                logger.error(f"Whisper a échoué avec le code: {result.returncode}")
+                logger.error(f"Stderr: {result.stderr}")
+            
             duration = time.time() - start
             logger.info(f"Traitement whisper.cpp terminé en {duration:.2f}s")
+            
             txt_path = self.output_path + ".txt"
             if os.path.exists(txt_path):
                 with open(txt_path, "r") as f:
                     self.transcription = f.read().strip()
+                    logger.info(f"Contenu du fichier de transcription: '{self.transcription}'")
+            else:
+                logger.error(f"Fichier de transcription introuvable: {txt_path}")
+                
         except Exception as e:
             logger.error(f"Erreur de transcription : {e}")
+            
         self.is_processing = False
         logger.info(f"Transcription terminée en {time.time() - start:.2f}s")
+
+
 
     def get_transcription(self):
         return self.transcription
