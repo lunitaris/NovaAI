@@ -1,7 +1,15 @@
 flask
 flask-cors
 sounddevice
-numpy
+"numpy<2"
 httpx
 piper-tts
-scipy
+webrtcvad
+
+# DB VECTORIELLE
+chromadb
+pydantic==1.10.13
+
+# DB RECHERCHE DE CONNAISSANCES
+faiss-cpu
+sentence-transformers

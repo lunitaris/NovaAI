@@ -1,22 +1,29 @@
 import os
 import json
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from collections import defaultdict
 from sentence_transformers import SentenceTransformer
 
+
 class SyntheticMemory:
-    def __init__(self, storage_path="memory/synthetic/summaries.json"):
-        self.storage_path = Path(storage_path)
-        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, base_dir="memory/summary"):
+        self.base_dir = Path(base_dir)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        self.storage_path = self.base_dir / "summaries.json"
+
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.memory = []
         self._load()
 
     def _load(self):
         if self.storage_path.exists():
-            with open(self.storage_path, "r", encoding="utf-8") as f:
-                self.memory = json.load(f)
+            try:
+                with open(self.storage_path, "r", encoding="utf-8") as f:
+                    self.memory = json.load(f)
+            except json.JSONDecodeError:
+                print("[WARN] summaries.json was corrupt or empty, starting fresh.")
+                self.memory = []
         else:
             self.memory = []
 
@@ -63,8 +70,8 @@ class SyntheticMemory:
         return self._light_summary(combined)
 
     def _light_summary(self, text):
-        summary = text.split(".")[0][:200] + "..."  # résumé léger
+        summary = text.split(".")[0][:200] + "..."  # simple extract
         embedding = self.model.encode([summary])[0]
-        importance = min(10, int(len(text) / 300))  # importance heuristique
+        importance = min(10, int(len(text) / 300))  # simple heuristic
         theme = "default"
         return summary.strip(), importance

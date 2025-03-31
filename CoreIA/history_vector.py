@@ -4,53 +4,38 @@ import json
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-"""
-HistoryManager:
-Stocke et recherche les échanges passés dans une base vectorielle FAISS (MiniLM).
-Ceci est la version principale utilisée par Nova.
-Ne pas dupliquer dans d'autres fichiers.
-"""
 class SemanticMemory:
-    def __init__(self, dossier_base="memory/history", index_file="faiss.index"):
-        self.dossier_base = dossier_base
-        os.makedirs(dossier_base, exist_ok=True)
+    def __init__(self, base_dir="memory/history", index_file="faiss.index"):
+        self.base_dir = base_dir
+        os.makedirs(base_dir, exist_ok=True)
 
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
-        self.index_file = os.path.join(dossier_base, index_file)
+        self.model = SentenceTransformer("all-MiniLM-L6-v2")  # fast & lightweight
+        self.index_path = os.path.join(base_dir, index_file)
         self.index = faiss.IndexFlatL2(384)
 
-        self.mapping_file = os.path.join(dossier_base, "mapping.json")
+        self.mapping_path = os.path.join(base_dir, "mapping.json")
         self.mapping = {}
 
-        # Charger l'index si possible
-        try:
-            if os.path.exists(self.index_file) and os.path.getsize(self.index_file) > 0:
-                self.index = faiss.read_index(self.index_file)
-                print("[INFO] Index FAISS chargé")
-            else:
-                print("[INFO] Aucun index FAISS trouvé, nouveau créé")
-        except Exception as e:
-            print(f"[WARN] Impossible de charger l'index FAISS : {e}")
-            self.index = faiss.IndexFlatL2(384)
+        if os.path.exists(self.index_path):
+            self.index = faiss.read_index(self.index_path)
+        else:
+            print("[INFO] No FAISS index found, creating a new one")
 
-        # Charger le mapping
-        if os.path.exists(self.mapping_file):
+        if os.path.exists(self.mapping_path):
             try:
-                with open(self.mapping_file, "r") as f:
+                with open(self.mapping_path, "r") as f:
                     self.mapping = json.load(f)
             except Exception as e:
-                print(f"[WARN] Erreur de lecture mapping.json : {e}")
-                self.mapping = {}
+                print(f"[WARN] Failed to load mapping.json: {e}")
 
-
-    def sauvegarder(self):
-        faiss.write_index(self.index, self.index_file)
-        with open(self.mapping_file, "w") as f:
+    def save(self):
+        faiss.write_index(self.index, self.index_path)
+        with open(self.mapping_path, "w") as f:
             json.dump(self.mapping, f, indent=2)
 
-    def ajouter_conversation(self, user_message, assistant_response):
-        vecteur = self.model.encode([user_message])
-        self.index.add(np.array(vecteur).astype("float32"))
+    def store(self, user_message, assistant_response):
+        vector = self.model.encode([user_message])
+        self.index.add(np.array(vector).astype("float32"))
 
         idx = len(self.mapping)
         self.mapping[str(idx)] = {
@@ -58,14 +43,14 @@ class SemanticMemory:
             "assistant": assistant_response
         }
 
-        self.sauvegarder()
+        self.save()
 
-    def chercher_similaire(self, nouveau_message, k=3):
-        vecteur = self.model.encode([nouveau_message]).astype("float32")
-        D, I = self.index.search(vecteur, k)
+    def search_similar(self, new_message, k=3):
+        vector = self.model.encode([new_message]).astype("float32")
+        D, I = self.index.search(vector, k)
 
-        resultats = []
+        results = []
         for idx in I[0]:
             if str(idx) in self.mapping:
-                resultats.append(self.mapping[str(idx)])
-        return resultats
+                results.append(self.mapping[str(idx)])
+        return results
