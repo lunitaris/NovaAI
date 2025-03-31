@@ -50,6 +50,14 @@ class TTSService:
         self.volume_factor = 0.8  # Réduire le volume pour éviter le clipping
         self.fade_duration = 0.01  # Durée du fade in/out en secondes
         
+        # Buffer de texte pour éviter les synthèses fragmentées
+        self.text_buffer = ""
+        self.last_synthesis_time = 0
+        self.min_synthesis_interval = 0.2  # Réduit pour améliorer la fluidité
+        
+        # Pour la synthèse de longues phrases
+        self.current_paragraph = ""
+        
         # Initialiser le modèle de voix
         self._init_voice()
         
@@ -102,29 +110,87 @@ class TTSService:
             raise
     
     async def synthesize(self, text: str):
-        """Synthétise le texte en audio et le met en file d'attente pour lecture"""
+        """Synthétise le texte en audio avec buffer intelligent"""
         if not text or not text.strip():
             return
         
         try:
-            # Nettoyer et segmenter le texte
-            text = text.strip()
-            logger.info(f"Synthèse demandée: {text[:100]}{'...' if len(text) > 100 else ''}")
+            # Ajouter le texte au buffer
+            self.text_buffer += text
             
-            # Segmenter intelligemment
-            segments = self._segment_text(text)
+            # Déterminer si on doit synthétiser maintenant
+            should_synthesize = False
             
-            # Générer et mettre en file d'attente chaque segment
-            for segment in segments:
-                if segment.strip():
-                    # Exécuter dans un thread pour ne pas bloquer
-                    audio_data = await asyncio.to_thread(self._generate_audio, segment.strip())
-                    if audio_data is not None and len(audio_data) > 0:
-                        self.audio_queue.put(audio_data)
+            # Vérifier si le texte contient une frontière naturelle
+            primary_boundaries = ['.', '!', '?', '\n']
+            secondary_boundaries = [':', ';']
+            
+            # Synthétiser immédiatement si frontière primaire
+            if any(boundary in text for boundary in primary_boundaries):
+                should_synthesize = True
+            # Synthétiser avec une pause plus courte si frontière secondaire
+            elif any(boundary in text for boundary in secondary_boundaries):
+                should_synthesize = True
+                # Pause plus courte pour les délimiteurs légers
+                self.min_synthesis_interval = 0.1
+            # Si le buffer est assez grand pour former une phrase complète
+            elif len(self.text_buffer.split()) > 12:
+                should_synthesize = True
+                
+            # Respecter l'intervalle minimum entre les synthèses
+            current_time = time.time()
+            if current_time - self.last_synthesis_time < self.min_synthesis_interval:
+                should_synthesize = False
+                
+            if should_synthesize:
+                buffer_text = self.text_buffer.strip()
+                
+                # Traiter les listes à puces et les astérisques pour améliorer la prosodie
+                buffer_text = self._preprocess_text(buffer_text)
+                
+                logger.info(f"Synthèse demandée: {buffer_text[:100]}{'...' if len(buffer_text) > 100 else ''}")
+                
+                # Segmenter intelligemment
+                segments = self._segment_text(buffer_text)
+                
+                # Générer et mettre en file d'attente chaque segment
+                for segment in segments:
+                    if segment.strip():
+                        # Exécuter dans un thread pour ne pas bloquer
+                        audio_data = await asyncio.to_thread(self._generate_audio, segment.strip())
+                        if audio_data is not None and len(audio_data) > 0:
+                            self.audio_queue.put(audio_data)
+                
+                # Réinitialiser le buffer
+                self.text_buffer = ""
+                self.last_synthesis_time = current_time
+                
+                # Réinitialiser l'intervalle par défaut
+                self.min_synthesis_interval = 0.2
         
         except Exception as e:
             logger.error(f"Erreur lors de la synthèse: {e}")
     
+    def _preprocess_text(self, text: str) -> str:
+        """Prétraite le texte pour améliorer la prosodie"""
+        # Remplacer les puces par du texte plus parlant
+        text = text.replace("* ", ", point: ")
+        text = text.replace("- ", ", tiret: ")
+        
+        # Améliorer la lecture des URL et symboles spéciaux
+        text = text.replace("http://", "h t t p deux-points slash slash ")
+        text = text.replace("https://", "h t t p s deux-points slash slash ")
+        text = text.replace("www.", "w w w point ")
+        
+        # Traiter les parenthèses pour mieux marquer les pauses
+        text = text.replace("(", ", ouverture de parenthèse, ")
+        text = text.replace(")", ", fermeture de parenthèse, ")
+        
+        # Normaliser les espaces
+        text = ' '.join(text.split())
+        
+        return text
+
     def _segment_text(self, text: str) -> List[str]:
         """Divise le texte en segments naturels pour une meilleure synthèse"""
         if not text:
@@ -133,66 +199,51 @@ class TTSService:
         # Nettoyer le texte (espaces multiples, etc.)
         text = ' '.join(text.split())
         
-        # Liste des segments
-        segments = []
+        # Une seule phrase courte = un seul segment
+        if len(text.split()) < 15 and not any(marker in text for marker in ['.', '!', '?', ':', ';', '\n']):
+            return [text]
         
-        # Délimiteurs de phrases
-        end_markers = ['.', '!', '?', ':', ';', '\n']
+        # Délimiteurs primaires (forte pause)
+        primary_markers = ['.', '!', '?', '\n']
+        # Délimiteurs secondaires (pause légère)
+        secondary_markers = [':', ';', ',']
         
-        # Mots qui ne doivent pas être séparés du mot suivant
-        non_break_words = [
-            "le", "la", "les", "un", "une", "des", "ma", "ta", "sa", "mon", "ton", "son",
-            "ce", "ces", "cette", "à", "de", "du", "au", "aux", "en", "dans", "par", "pour",
-            "sur", "avec"
-        ]
-        # Préfixes qui indiquent une contraction
-        contractions = ["l'", "d'", "j'", "n'", "qu'", "s'", "t'", "m'"]
+        # Découper d'abord par les délimiteurs primaires
+        primary_segments = []
+        current = ""
         
-        # Découpage initial par mots
-        words = text.split()
+        for char in text:
+            current += char
+            if char in primary_markers:
+                primary_segments.append(current.strip())
+                current = ""
         
-        current_segment = ""
-        word_count = 0
+        if current:
+            primary_segments.append(current.strip())
         
-        for i, word in enumerate(words):
-            # Ajouter le mot au segment actuel
-            if current_segment:
-                current_segment += " " + word
+        # Puis découper les segments trop longs par les délimiteurs secondaires
+        final_segments = []
+        for segment in primary_segments:
+            if len(segment.split()) > 15:  # Segments trop longs
+                subsegments = []
+                subcurrent = ""
+                
+                for char in segment:
+                    subcurrent += char
+                    if char in secondary_markers:
+                        if len(subcurrent.split()) > 5:  # Éviter les segments trop courts
+                            subsegments.append(subcurrent.strip())
+                            subcurrent = ""
+                
+                if subcurrent:
+                    subsegments.append(subcurrent.strip())
+                    
+                final_segments.extend(subsegments)
             else:
-                current_segment = word
-                
-            word_count += 1
-            
-            # Déterminer si c'est un bon moment pour couper le segment
-            end_segment = False
-            
-            # 1. Fin de texte
-            if i == len(words) - 1:
-                end_segment = True
-                
-            # 2. Fin de phrase (ponctuation)
-            elif any(word.endswith(marker) for marker in end_markers):
-                end_segment = True
-                
-            # 3. Segment assez long mais pas après un mot qui ne doit pas être séparé
-            elif word_count >= 10:
-                lowered = word.lower().rstrip(',.!?:;')
-                is_non_break = lowered in non_break_words or any(lowered.startswith(c) for c in contractions)
-                if not is_non_break:
-                    end_segment = True
-            
-            # Si on doit terminer le segment
-            if end_segment:
-                segments.append(current_segment)
-                current_segment = ""
-                word_count = 0
+                final_segments.append(segment)
         
-        # Ajouter le dernier segment s'il existe
-        if current_segment:
-            segments.append(current_segment)
-        
-        return segments
-    
+        return final_segments
+
     def _generate_audio(self, text: str) -> Optional[np.ndarray]:
         """Génère l'audio à partir du texte"""
         if not text or not self.voice:
@@ -265,12 +316,14 @@ class TTSService:
                 self.is_speaking = True
                 self.stop_requested = False
                 
-                # Jouer l'audio
+                # Jouer l'audio sans délai préalable pour rendre la lecture plus fluide
                 sd.play(audio_data, self.sample_rate)
                 
-                # Attendre la fin de la lecture ou une interruption
-                while sd.get_stream().active and not self.stop_requested:
-                    time.sleep(0.1)
+                # Attendre la fin de la lecture (méthode plus efficace)
+                sd.wait()
+                
+                # Ajouter un très léger délai pour la pause naturelle
+                time.sleep(0.05)
                     
                 # Arrêter la lecture si demandé
                 if self.stop_requested:
@@ -297,6 +350,9 @@ class TTSService:
                 self.audio_queue.task_done()
             except queue.Empty:
                 break
+        
+        # Réinitialiser le buffer de texte
+        self.text_buffer = ""
     
     def cleanup(self):
         """Nettoie les ressources (à appeler lors de l'arrêt du programme)"""

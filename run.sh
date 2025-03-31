@@ -48,41 +48,9 @@ else
     fi
 fi
 
-# Vérifier si piper-tts est installé, sinon l'installer
-if ! pip show piper-tts > /dev/null 2>&1; then
-    echo -e "${YELLOW}Installation de piper-tts...${NC}"
-    pip install -r tts_requirements.txt
-fi
-
-# Lancer le service TTS en arrière-plan
-echo -e "${GREEN}Démarrage du service TTS...${NC}"
-python tts_service.py &
-TTS_PID=$!
-
-# Vérifier que le service TTS est bien démarré
-sleep 2
-if ! curl -s "http://localhost:5002/status" > /dev/null; then
-    echo -e "${RED}Erreur: Le service TTS n'a pas démarré correctement${NC}"
-else
-    echo -e "${GREEN}Service TTS démarré avec succès${NC}"
-fi
-
-# Lancer le service de reconnaissance vocale en arrière-plan
-echo -e "${GREEN}Démarrage du service de reconnaissance vocale...${NC}"
-python voice_service.py &
-VOICE_PID=$!
-
-# Vérifier que le service de reconnaissance vocale est bien démarré
-sleep 2
-if ! curl -s "http://localhost:5001/status" > /dev/null; then
-    echo -e "${RED}Erreur: Le service de reconnaissance vocale n'a pas démarré correctement${NC}"
-else
-    echo -e "${GREEN}Service de reconnaissance vocale démarré avec succès${NC}"
-fi
-
-# Lancer l'application principale
+# Lancer l'application principale (qui intègre maintenant TTS et reconnaissance vocale)
 echo -e "${GREEN}Démarrage de l'application principale...${NC}"
 python app.py
 
 # Capture des signaux pour fermer proprement
-trap "echo -e '${YELLOW}Arrêt des services...${NC}'; kill $VOICE_PID; kill $TTS_PID; if [ ! -z $OLLAMA_PID ]; then kill $OLLAMA_PID; fi; exit" INT TERM EXIT
+trap "echo -e '${YELLOW}Arrêt des services...${NC}'; if [ ! -z $OLLAMA_PID ]; then kill $OLLAMA_PID; fi; exit" INT TERM EXIT
