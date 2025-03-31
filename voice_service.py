@@ -123,7 +123,7 @@ def record_audio():
                 with wave.open(temp_filename, 'wb') as wf:
                     wf.setnchannels(CHANNELS)
                     wf.setsampwidth(2)  # 16 bits
-                    wf.setframerate(SAMPLE_RATE)
+                    wf.setframerate(SAMPLE_RATE)  # Crucial de définir ce paramètre !
                     wf.writeframes(audio_concat.tobytes())
             
             logger.info(f"Audio sauvegardé dans {temp_filename}")
