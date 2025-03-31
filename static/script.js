@@ -272,18 +272,13 @@ async function processChatMessage(message) {
 
 async function processChatMessageStreaming(message) {
     try {
-        // Changer l'état à "réflexion"
         setAIState('thinking');
-        
-        // Créer un élément de message pour la réponse de l'assistant
+
         const messageElement = document.createElement('div');
         messageElement.className = 'message assistant-message';
         chatContainer.appendChild(messageElement);
-        
-        // Faire défiler vers le bas pour voir la réponse
         chatContainer.scrollTop = chatContainer.scrollHeight;
-        
-        // Envoyer la requête et obtenir la réponse en streaming
+
         const response = await fetch('/chat-stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -293,70 +288,65 @@ async function processChatMessageStreaming(message) {
                 model: modelSelect.value
             })
         });
-        
-        // Vérifier si la réponse est OK
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
-        // Changer l'état à "réponse" dès qu'on commence à recevoir des données
+
         setAIState('responding');
-        
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let responseText = "";
-        
-        // Lire la réponse en streaming
+
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
-            // Décoder le texte reçu
+
             const chunk = decoder.decode(value);
-            
-            // Traiter chaque ligne du chunk
             const lines = chunk.split('\n\n');
+
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
+                    const rawData = line.slice(6);
+                    console.log("🔹 RAW SSE DATA:", rawData); // ✅ Ajouté
+
                     try {
-                        const data = JSON.parse(line.slice(6));
-                        
-                        // Si c'est un morceau de texte
+                        const data = JSON.parse(rawData);
+
                         if (data.chunk) {
                             responseText += data.chunk;
                             messageElement.innerText = responseText;
                             chatContainer.scrollTop = chatContainer.scrollHeight;
                         } 
-                        // Si c'est la fin du streaming
                         else if (data.done) {
-                            // Mettre à jour l'historique de conversation
                             conversationHistory = data.history;
-                            
-                            // Revenir à l'état d'attente après un délai
                             setTimeout(() => {
                                 if (currentState === 'responding') {
                                     setAIState('idle');
                                 }
                             }, 2000);
-                        }
-                        // Si c'est une erreur
+                        } 
                         else if (data.error) {
-                            console.error('Erreur:', data.error);
+                            console.error('Erreur SSE:', data.error);
                             messageElement.innerText = 'Erreur de communication avec l\'assistant';
                             setAIState('idle');
                         }
+
                     } catch (e) {
-                        console.error('Erreur de parsing:', e, line);
+                        console.error('❌ Erreur JSON.parse:', e, rawData);
+                        messageElement.innerText = 'Erreur de parsing JSON depuis le serveur';
+                        setAIState('idle');
                     }
                 }
             }
         }
     } catch (error) {
-        console.error('Erreur:', error);
+        console.error('❌ Erreur fetch/chat-stream:', error);
         addMessage('system', 'Erreur de communication avec l\'assistant');
         setAIState('idle');
     }
 }
+
 
 async function sendMessage() {
     const message = messageInput.value.trim();

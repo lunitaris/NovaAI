@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +24,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nova-app")
 
+
 app = FastAPI(title="Assistant IA Local avec Ollama")
+
+
+# Charger le prompt système depuis un fichier JSON
+try:
+    with open("personality.json", "r", encoding="utf-8") as f:
+        DEFAULT_SYSTEM_PROMPT = json.load(f)
+except Exception as e:
+    DEFAULT_SYSTEM_PROMPT = {
+        "role": "system",
+        "content": "Tu es un assistant vocal local."
+    }
+    logger.warning(f"Impossible de charger le prompt personnalisé: {e}")
+
+
 
 # Configuration Ollama
 OLLAMA_API = "http://localhost:11434/api"
@@ -39,7 +55,7 @@ response_cache = {}
 async def chat(request: Request):
     start_time = time.time()
     logger.info(f"Début du traitement de la requête chat")
-    
+
     data = await request.json()
     user_message = data.get("message", "")
     conversation_history = data.get("history", [])
@@ -47,22 +63,17 @@ async def chat(request: Request):
     
     logger.info(f"Message utilisateur: '{user_message[:50]}...' (tronqué)")
     logger.info(f"Modèle sélectionné: {model}")
-    
-    # Ajout du message utilisateur à l'historique
-    conversation_history.append({"role": "user", "content": user_message})
-    
-    # Créer une clé de cache (uniquement basée sur le dernier message pour simplicité)
+
+    conversation_history.append({"role": "user", "content": user_message})      # Ajoute le message de l'utilisateur
+    conversation_history = [DEFAULT_SYSTEM_PROMPT] + conversation_history       # Injecte le prompt système au début
+
     cache_key = f"{model}:{user_message}"
-    
-    # Vérifier le cache
+
     if cache_key in response_cache:
         logger.info(f"Réponse trouvée dans le cache")
         cached_response = response_cache[cache_key]
-        cache_time = time.time() - start_time
-        logger.info(f"Traitement depuis le cache en {cache_time:.2f} secondes")
         return cached_response
-    
-    # Paramètres pour Ollama avec optimisations
+
     payload = {
         "model": model,
         "messages": conversation_history,
@@ -74,61 +85,33 @@ async def chat(request: Request):
             "top_k": 30
         }
     }
-    
-    # Appel synchrone à Ollama
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
-            logger.info(f"Envoi de la requête à Ollama")
-            ollama_start_time = time.time()
-            
             response = await client.post(f"{OLLAMA_API}/chat", json=payload)
-            
-            ollama_time = time.time() - ollama_start_time
-            logger.info(f"Réponse d'Ollama reçue en {ollama_time:.2f} secondes")
-            
             response_data = response.json()
-            
-            # Extraire la réponse de l'assistant
+
             assistant_message = response_data.get("message", {}).get("content", "")
-            
-            # Synthétiser la réponse vocalement (intégré directement)
-            asyncio.create_task(tts_service.synthesize(assistant_message))
-            
-            # Mettre à jour l'historique
+            await tts_service.synthesize(assistant_message)
+
             conversation_history.append({"role": "assistant", "content": assistant_message})
-            
-            # Préparer la réponse
             result = {"response": assistant_message, "history": conversation_history}
-            
-            # Stocker dans le cache
             response_cache[cache_key] = result
-            
-            total_time = time.time() - start_time
-            logger.info(f"Traitement total de la requête en {total_time:.2f} secondes")
-            
             return result
         except Exception as e:
-            error_time = time.time() - start_time
-            logger.error(f"Erreur lors de la communication avec Ollama après {error_time:.2f} secondes: {e}")
+            logger.error(f"Erreur communication avec Ollama: {e}")
             return {"response": "Erreur de communication avec l'assistant", "history": conversation_history}
 
 @app.post("/chat-stream")
 async def chat_stream(request: Request):
-    start_time = time.time()
-    logger.info(f"Début du traitement de la requête chat-stream")
-    
     data = await request.json()
     user_message = data.get("message", "")
     conversation_history = data.get("history", [])
     model = data.get("model", "llama3")
     
-    logger.info(f"Message utilisateur (streaming): '{user_message[:50]}...' (tronqué)")
-    logger.info(f"Modèle sélectionné (streaming): {model}")
-    
-    # Ajout du message utilisateur à l'historique
-    conversation_history.append({"role": "user", "content": user_message})
-    
-    # Paramètres pour Ollama avec streaming activé
+    conversation_history.append({"role": "user", "content": user_message})      # Ajoute le message de l'utilisateur
+    conversation_history = [DEFAULT_SYSTEM_PROMPT] + conversation_history       # Injecte le prompt système au début
+
     payload = {
         "model": model,
         "messages": conversation_history,
@@ -140,15 +123,11 @@ async def chat_stream(request: Request):
             "top_k": 30
         }
     }
-    
+
     async def generate():
         total_response = ""
         current_sentence = ""
-        
-        # Mesurer le temps de début du streaming
-        stream_start = time.time()
-        logger.info(f"Démarrage du streaming Ollama")
-        
+
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 async with client.stream("POST", f"{OLLAMA_API}/chat", json=payload, timeout=60.0) as response:
@@ -160,73 +139,41 @@ async def chat_stream(request: Request):
                                     content = chunk_data["message"]["content"]
                                     total_response += content
                                     current_sentence += content
-                                    
-                                    # Vérifier la segmentation pour la synthèse vocale
-                                    sentence_end = False
-                                    
-                                    # Détecter la fin d'une phrase pour la synthèse vocale
-                                    for end_marker in ['.', '!', '?', ':', ';', '\n']:
-                                        if end_marker in content:
-                                            sentence_end = True
-                                            break
-                                    
-                                    # Si on a atteint la fin d'une phrase ou un fragment assez long
+
+                                    sentence_end = any(mark in content for mark in (['.', '!', '?', ':', ';', '']))
+
                                     if sentence_end or len(current_sentence) > 80:
-                                        # Synthétiser cette phrase
-                                        asyncio.create_task(tts_service.synthesize(current_sentence))
+                                        await tts_service.synthesize(current_sentence)
                                         current_sentence = ""
-                                    
-                                    # Envoyer chaque morceau au client
+
                                     yield f"data: {json.dumps({'chunk': content})}\n\n"
                             except json.JSONDecodeError:
-                                logger.warning(f"Impossible de décoder le chunk JSON: {chunk}")
                                 continue
-            
-            # Synthétiser toute phrase restante
+
             if current_sentence:
-                asyncio.create_task(tts_service.synthesize(current_sentence))
-                
-            # Une fois le streaming terminé, envoyer l'historique complet
+                await tts_service.synthesize(current_sentence)
+
             conversation_history.append({"role": "assistant", "content": total_response})
-            stream_time = time.time() - stream_start
-            logger.info(f"Streaming Ollama terminé en {stream_time:.2f} secondes")
-            
-            # Envoyer un message final pour indiquer la fin du streaming
             yield f"data: {json.dumps({'done': True, 'history': conversation_history})}\n\n"
-            
+
         except Exception as e:
-            stream_time = time.time() - stream_start
-            logger.error(f"Erreur lors du streaming après {stream_time:.2f} secondes: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
+
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 @app.get("/models")
 async def list_models():
-    logger.info("Récupération des modèles disponibles")
-    start_time = time.time()
-    
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(f"{OLLAMA_API}/tags")
-            models_data = response.json()
-            
-            elapsed_time = time.time() - start_time
-            logger.info(f"Modèles récupérés en {elapsed_time:.2f} secondes: {len(models_data.get('models', []))} modèles trouvés")
-            
-            return models_data
+            return response.json()
         except Exception as e:
-            elapsed_time = time.time() - start_time
-            logger.error(f"Erreur lors de la récupération des modèles après {elapsed_time:.2f} secondes: {e}")
-            return {"models": []}  # Retourner une liste vide en cas d'erreur
+            return {"models": []}
 
-# Routes pour la reconnaissance vocale - intégrées à l'application principale
 @app.post("/start-recording")
 async def start_recording():
     success = voice_service.start_recording()
-    if success:
-        return {"status": "started"}
-    return {"status": "error", "message": "L'enregistrement est déjà en cours"}
+    return {"status": "started" if success else "error"}
 
 @app.post("/stop-recording")
 async def stop_recording():
@@ -235,23 +182,16 @@ async def stop_recording():
 
 @app.get("/get-transcription")
 async def get_transcription():
-    # Attendre que le traitement soit terminé
     while voice_service.is_processing:
         await asyncio.sleep(0.1)
-        
-    text = voice_service.get_transcription()
-    return {"text": text}
+    return {"text": voice_service.get_transcription()}
 
-# Routes pour la synthèse vocale - pour compatibilité JS frontend
 @app.post("/speak")
 async def speak(request: Request):
     data = await request.json()
     text = data.get("text", "")
-    
     if not text:
         return JSONResponse({"error": "Texte vide"}, status_code=400)
-    
-    # Appel au service intégré
     await tts_service.synthesize(text)
     return {"status": "success"}
 
@@ -262,43 +202,18 @@ async def stop_tts():
 
 @app.get("/tts-status")
 async def tts_status():
-    return {
-        "status": "running",
-        "is_speaking": tts_service.is_speaking
-    }
+    return {"status": "running", "is_speaking": tts_service.is_speaking}
 
-# Middleware pour logger les requêtes
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
-    
-    path = request.url.path
-    method = request.method
-    
-    if not path.startswith("/static"):
-        logger.info(f"Requête {method} {path} reçue")
-    
     response = await call_next(request)
-    
-    if not path.startswith("/static"):
-        process_time = time.time() - start_time
-        logger.info(f"Requête {method} {path} traitée en {process_time:.2f} secondes")
-    
     return response
 
-# Servir les fichiers statiques
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
-# Démarrage au point d'entrée
+
+
 if __name__ == "__main__":
     import uvicorn
-    
-    # Créer le dossier static s'il n'existe pas
-    os.makedirs("static", exist_ok=True)
-    
-    # Configurer uvicorn pour les logs
-    log_config = uvicorn.config.LOGGING_CONFIG
-    log_config["formatters"]["access"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
-    
-    logger.info("Démarrage de l'application Nova sur le port 8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_config=log_config)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
