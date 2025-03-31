@@ -156,6 +156,22 @@ async def tts_status():
 
 
 
+@app.get("/models")
+async def get_models():
+    """Récupère la liste des modèles disponibles depuis Ollama."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get("http://localhost:11434/api/tags")
+            if response.status_code == 200:
+                data = response.json()
+                return {"models": data.get("models", [])}
+            else:
+                return {"models": []}
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des modèles: {e}")
+        return {"models": []}
+
+
 
 @app.get("/memory/synthetic")
 async def get_synthetic_memory():

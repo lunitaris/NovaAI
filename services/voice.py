@@ -183,7 +183,6 @@ class VoiceRecognitionService:
         is_silent = np.max(data_norm) < self.silence_threshold
         return is_silent
     
-    def _transcribe_audio(self, audio_file: str) -> str:
         """Transcrit l'audio en utilisant whisper.cpp"""
         try:
             # Préparation de la commande whisper
@@ -221,8 +220,58 @@ class VoiceRecognitionService:
         
         except Exception as e:
             logger.error(f"Erreur lors de la transcription: {e}")
+            return "
+
+
+    def _transcribe_audio(self, audio_file: str) -> str:
+        try:
+            # Préparation de la commande whisper
+            cmd = [
+                self.whisper_exec,
+                "-m", self.whisper_model,
+                "-f", audio_file,
+                "-l", "fr",  # Langue française
+                "--no-timestamps",
+                "--no-gpu",  # Pour éviter les problèmes avec Metal sur Mac
+                "-t", "4"    # Utiliser 4 threads pour accélérer le traitement
+            ]
+            
+            logger.debug(f"Commande whisper: {' '.join(cmd)}")
+            start_time = time.time()
+            
+            # Exécuter whisper
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            logger.info(f"Sortie de Whisper: '{result.stdout}'")
+
+            
+            if result.returncode != 0:
+                logger.error(f"Whisper a retourné un code d'erreur: {result.returncode}")
+                logger.error(f"Erreur: {result.stderr}")
+            
+            process_time = time.time() - start_time
+            logger.info(f"Traitement whisper.cpp terminé en {process_time:.2f}s")
+            
+            # Ajouter des logs pour voir la sortie brute
+            logger.debug(f"Sortie stdout brute: {result.stdout}")
+            logger.debug(f"Sortie stderr: {result.stderr}")
+            
+            # Extraire le texte transcrit (ignorer les infos de debug)
+            transcription = ""
+            for line in result.stdout.splitlines():
+                # Filtrer les lignes de log qui commencent par [
+                if line and not line.startswith("["):
+                    transcription += line.strip() + " "
+                    logger.debug(f"Ligne de transcription détectée: {line.strip()}")
+            
+            logger.info(f"Transcription finale: '{transcription}'")
+            
+            return transcription.strip()
+        
+        except Exception as e:
+            logger.error(f"Erreur lors de la transcription: {e}")
             return ""
-    
+
+
     def cleanup(self):
         """Nettoie les ressources (à appeler lors de l'arrêt du programme)"""
         if self.recording:
