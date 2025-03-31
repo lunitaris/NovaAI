@@ -6,6 +6,11 @@ import json
 import os
 import time
 import logging
+import asyncio
+
+# Importer les modules intégrés
+from voice_module import VoiceRecognitionService
+from tts_module import TTSService
 
 # Configuration du logging
 logging.basicConfig(
@@ -22,6 +27,10 @@ app = FastAPI(title="Assistant IA Local avec Ollama")
 
 # Configuration Ollama
 OLLAMA_API = "http://localhost:11434/api"
+
+# Initialiser les services intégrés
+voice_service = VoiceRecognitionService()
+tts_service = TTSService()
 
 # Cache simple pour les réponses
 response_cache = {}
@@ -82,6 +91,9 @@ async def chat(request: Request):
             # Extraire la réponse de l'assistant
             assistant_message = response_data.get("message", {}).get("content", "")
             
+            # Synthétiser la réponse vocalement (intégré directement)
+            asyncio.create_task(tts_service.synthesize(assistant_message))
+            
             # Mettre à jour l'historique
             conversation_history.append({"role": "assistant", "content": assistant_message})
             
@@ -131,6 +143,7 @@ async def chat_stream(request: Request):
     
     async def generate():
         total_response = ""
+        current_sentence = ""
         
         # Mesurer le temps de début du streaming
         stream_start = time.time()
@@ -146,12 +159,33 @@ async def chat_stream(request: Request):
                                 if "message" in chunk_data and "content" in chunk_data["message"]:
                                     content = chunk_data["message"]["content"]
                                     total_response += content
+                                    current_sentence += content
+                                    
+                                    # Vérifier la segmentation pour la synthèse vocale
+                                    sentence_end = False
+                                    
+                                    # Détecter la fin d'une phrase pour la synthèse vocale
+                                    for end_marker in ['.', '!', '?', ':', ';', '\n']:
+                                        if end_marker in content:
+                                            sentence_end = True
+                                            break
+                                    
+                                    # Si on a atteint la fin d'une phrase ou un fragment assez long
+                                    if sentence_end or len(current_sentence) > 80:
+                                        # Synthétiser cette phrase
+                                        asyncio.create_task(tts_service.synthesize(current_sentence))
+                                        current_sentence = ""
+                                    
                                     # Envoyer chaque morceau au client
                                     yield f"data: {json.dumps({'chunk': content})}\n\n"
                             except json.JSONDecodeError:
                                 logger.warning(f"Impossible de décoder le chunk JSON: {chunk}")
                                 continue
             
+            # Synthétiser toute phrase restante
+            if current_sentence:
+                asyncio.create_task(tts_service.synthesize(current_sentence))
+                
             # Une fois le streaming terminé, envoyer l'historique complet
             conversation_history.append({"role": "assistant", "content": total_response})
             stream_time = time.time() - stream_start
@@ -186,6 +220,53 @@ async def list_models():
             logger.error(f"Erreur lors de la récupération des modèles après {elapsed_time:.2f} secondes: {e}")
             return {"models": []}  # Retourner une liste vide en cas d'erreur
 
+# Routes pour la reconnaissance vocale - intégrées à l'application principale
+@app.post("/start-recording")
+async def start_recording():
+    success = voice_service.start_recording()
+    if success:
+        return {"status": "started"}
+    return {"status": "error", "message": "L'enregistrement est déjà en cours"}
+
+@app.post("/stop-recording")
+async def stop_recording():
+    voice_service.stop_recording()
+    return {"status": "stopped"}
+
+@app.get("/get-transcription")
+async def get_transcription():
+    # Attendre que le traitement soit terminé
+    while voice_service.is_processing:
+        await asyncio.sleep(0.1)
+        
+    text = voice_service.get_transcription()
+    return {"text": text}
+
+# Routes pour la synthèse vocale - pour compatibilité JS frontend
+@app.post("/speak")
+async def speak(request: Request):
+    data = await request.json()
+    text = data.get("text", "")
+    
+    if not text:
+        return JSONResponse({"error": "Texte vide"}, status_code=400)
+    
+    # Appel au service intégré
+    await tts_service.synthesize(text)
+    return {"status": "success"}
+
+@app.post("/stop-tts")
+async def stop_tts():
+    tts_service.stop()
+    return {"status": "stopped"}
+
+@app.get("/tts-status")
+async def tts_status():
+    return {
+        "status": "running",
+        "is_speaking": tts_service.is_speaking
+    }
+
 # Middleware pour logger les requêtes
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -208,6 +289,7 @@ async def log_requests(request: Request, call_next):
 # Servir les fichiers statiques
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
+# Démarrage au point d'entrée
 if __name__ == "__main__":
     import uvicorn
     
