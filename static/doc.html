@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>📖 Documentation Mémoire - Nova</title>
+  <link rel="stylesheet" href="stylesDocs.css">
+</head>
+<body>
+  <h1>📖 Documentation sur les fichiers de mémoire de Nova</h1>
+
+  <p>Nova utilise plusieurs types de mémoire pour conserver les informations utiles à vos conversations. Voici un récapitulatif de leur rôle et de leur structure :</p>
+
+  <h2>📁 Fichiers de mémoire</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Fichier</th>
+        <th>Type de mémoire</th>
+        <th>Utilité principale</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>synthetic_memory.json</code></td>
+        <td>🧠 Synthétique</td>
+        <td>Contient des résumés thématiques compressés, produits automatiquement par Nova. Utilisés pour rappeler rapidement des infos clés au début de certaines conversations.</td>
+      </tr>
+      <tr>
+        <td><code>mapping.json</code></td>
+        <td>📚 Sémantique</td>
+        <td>Fichier qui fait le lien entre les ID vectoriels stockés dans FAISS et leur texte d'origine. Sert à afficher les résultats pertinents lors des recherches par similarité.</td>
+      </tr>
+      <tr>
+        <td><code>faiss.index</code></td>
+        <td>🔍 Sémantique brute</td>
+        <td>Contient les vecteurs FAISS utilisés pour retrouver les souvenirs similaires à une requête. C'est le coeur du moteur de recherche vectoriel de Nova.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>🔎 Détails</h2>
+  <ul>
+    <li><strong>Mémoire synthétique :</strong> utilisée lors de l'initialisation d'un nouveau prompt pour rappeler le contexte général, les goûts de l'utilisateur, les intentions passées, etc.</li>
+    <li><strong>Mémoire sémantique :</strong> appelée dynamiquement lorsqu'une question est posée, pour retrouver les souvenirs proches en terme de sens (grâce aux embeddings).</li>
+  </ul>
+
+  <h2>🚀 Envie d'aller plus loin ?</h2>
+  <p>Tu peux modifier ces fichiers manuellement ou via l'interface <code>/admin</code>. Tu peux aussi ajouter de nouvelles fonctionnalités comme :</p>
+  <ul>
+    <li>Ajouter un score d'importance à chaque souvenir</li>
+    <li>Enregistrer la date de création</li>
+    <li>Classer par thème ou par priorité</li>
+    <li>Supprimer automatiquement les souvenirs trop vieux ou non pertinents</li>
+  </ul>
+
+
+
+  <h1> 🧠 Mémoire synthétique</h1>
+
+  <p>C’est un mécanisme de résumés thématiques condensés pour:</p>
+  <ul>
+    <li>Retenir des faits importants ou récurrents</li>
+    <li>Gérer une forme de long terme plus stable que la mémoire sémantique</li>
+    <li>Réinjecter ces résumés en début de prompt, pour donner du contexte au LLM sans tout recharger</li>
+  </ul>
+    
+  <h3>Quand se remplit-elle ?</h3>
+ <p>Elle se remplit automatiquement selon la logique du fichier <code>synthetic_memory.py</code>.</p> 
+
+ <p><strong>🔁 Cas typique</strong></p>
+<p>Après chaque réponse du LLM (ou à intervalle), Nova :</p>
+<p></p>
+<p>1) Analyse l’échange</p>
+<p>2) En déduit un résumé condensé thématique</p>
+<p>3) Puis le stocke dans la mémoire synthétique</p>
+<p></p>
+
+<p>Dans <code>chat_engine.py</code>ou <code>app.py</code>, on retrouvera:</p>
+<p><code>synthetic_memory.add_summary(conversation)</code></p>
+<p><code>synthetic_memory.add_summary_if_relevant(conversation)</code></p>
+
+
+
+
+
+ 
+
+</body>
+</html>

@@ -4,7 +4,9 @@ sounddevice
 "numpy<2"
 httpx
 piper-tts
-webrtcvad
+soundfile
+python-multipart
+
 
 # DB VECTORIELLE
 chromadb

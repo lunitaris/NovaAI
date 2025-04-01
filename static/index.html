@@ -1,71 +1,28 @@
+<!-- index.html nettoyé : suppression du sélecteur flottant de mode -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Assistant IA Local (Ollama)</title>
+    <title>Nova - Assistant IA Local</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h1>Assistant IA Local</h1>
-    
-    <div id="visualization-container">
-        <div id="ai-circle" class="idle">
-            <div class="circle-segment"></div>
-            <div class="segment-inner"></div>
-            <div class="segment-line" style="transform: rotate(0deg)"></div>
-            <div class="segment-line" style="transform: rotate(45deg)"></div>
-            <div class="segment-line" style="transform: rotate(90deg)"></div>
-            <div class="segment-line" style="transform: rotate(135deg)"></div>
-        </div>
-    </div>
-    
-    <div id="model-selector">
-        <label for="model-select">Modèle: </label>
-        <select id="model-select"></select>
-    </div>
-    
-    <div id="mode-toggle">
-        <button id="mode-switch-button">
-            <svg id="chat-icon" class="mode-icon active" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
-            </svg>
-            <svg id="voice-icon" class="mode-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-            </svg>
-        </button>
+    <div class="tabs">
+        <button id="tab-chat" class="tab active">💬 Chat</button>
+        <button id="tab-vocal" class="tab">📞 Appel vocal</button>
     </div>
     
     <div id="chat-container"></div>
-    
+
     <div id="input-container">
-        <div id="mic-buttons-container">
-            <div id="mic-button" class="mic-classic" title="Mode classique - Réponse après transcription complète">
-                <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                </svg>
-            </div>
-            <div id="mic-button-stream" class="mic-stream" title="Mode streaming - Réponse en temps réel">
-                <svg id="mic-stream-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                </svg>
-                <span class="stream-indicator"></span>
-            </div>
-            <!-- Bouton Synthèse Vocale -->
-            <div id="tts-button" title="Activer/Désactiver la synthèse vocale">
-                <svg id="tts-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                </svg>
-            </div>
-        </div>
-        <input type="text" id="message-input" placeholder="Posez votre question...">
-        <button onclick="sendMessage()">Envoyer</button>
+        <select id="model-select"></select>
+        <input type="text" id="message-input" placeholder="Écris un message ou utilise le micro...">
+        <button id="mic-button">🎙️</button>
     </div>
-    
-    <!-- Chargement des scripts séparés - charger d'abord le service de synthèse vocale -->
+
+    <div id="ai-circle" class="idle"></div>
+
     <script src="script.js"></script>
 </body>
 </html>

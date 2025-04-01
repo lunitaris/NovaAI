@@ -53,6 +53,17 @@ class SyntheticMemory:
             return [m for m in self.memory if m["theme"] == theme]
         return sorted(self.memory, key=lambda m: -m["importance"])
 
+    def get_summary_by_id(self, summary_id):
+        return next((m for m in self.memory if m["id"] == summary_id), None)
+
+
+    def delete_summary(self, summary_id: str) -> bool:
+        if summary_id in self.summaries:
+            del self.summaries[summary_id]
+            self._save()
+            return True
+        return False
+
     def prune(self, max_age_days=7, min_importance=3):
         now = datetime.utcnow()
         new_memory = []

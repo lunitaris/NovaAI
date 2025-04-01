@@ -45,7 +45,7 @@ class VoiceRecognitionService:
         try:
             with sd.InputStream(samplerate=self.sample_rate,
                                 blocksize=self.block_size,
-                                dtype='int16',
+                                dtype='float32',
                                 channels=self.channels,
                                 callback=callback):
                 logger.info("Début de l'enregistrement audio")
@@ -78,7 +78,14 @@ class VoiceRecognitionService:
                 wf.setnchannels(self.channels)
                 wf.setsampwidth(2)  # 16-bit audio
                 wf.setframerate(self.sample_rate)
-                wf.writeframes(b''.join(self.audio_data))
+
+                try:
+                    raw_pcm = b''.join(self.audio_data)
+                    audio_array = np.frombuffer(raw_pcm, dtype=np.int16)
+                    wf.writeframes(audio_array.astype(np.int16).tobytes())
+                except Exception as e:
+                    logger.error(f"Erreur lors de la sauvegarde audio: {e}")
+
         logger.info(f"Audio sauvegardé dans {self.output_path}")
         self._run_transcription()
 
@@ -88,23 +95,24 @@ class VoiceRecognitionService:
         try:
             cmd = [
                 "opt/whisper.cpp/build/bin/whisper-cli",
-                "-m", "opt/whisper.cpp/models/ggml-base.bin",  # Chemin corrigé
+                "-m", "opt/whisper.cpp/models/ggml-base.bin",
                 "-f", self.output_path,
-                "-l", "fr",  # Spécifier le français
+                "-l", "fr",
+                "-nt",
                 "-otxt",
                 "-of", self.output_path
             ]
             logger.info(f"Exécution de la commande: {' '.join(cmd)}")
-            
+
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            
+
             if result.returncode != 0:
                 logger.error(f"Whisper a échoué avec le code: {result.returncode}")
                 logger.error(f"Stderr: {result.stderr}")
-            
+
             duration = time.time() - start
             logger.info(f"Traitement whisper.cpp terminé en {duration:.2f}s")
-            
+
             txt_path = self.output_path + ".txt"
             if os.path.exists(txt_path):
                 with open(txt_path, "r") as f:
@@ -112,14 +120,12 @@ class VoiceRecognitionService:
                     logger.info(f"Contenu du fichier de transcription: '{self.transcription}'")
             else:
                 logger.error(f"Fichier de transcription introuvable: {txt_path}")
-                
+
         except Exception as e:
             logger.error(f"Erreur de transcription : {e}")
-            
+
         self.is_processing = False
         logger.info(f"Transcription terminée en {time.time() - start:.2f}s")
-
-
 
     def get_transcription(self):
         return self.transcription

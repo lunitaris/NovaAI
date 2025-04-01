@@ -1,307 +1,59 @@
-body { 
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-    max-width: 800px; 
-    margin: 0 auto; 
+/* ✅ styles.css restauré au style original, mais avec les composants inutiles retirés */
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    max-width: 800px;
+    margin: 0 auto;
     padding: 20px;
     background-color: #0a0a14;
     color: #e0e0e0;
-}
-
-h1 {
+  }
+  
+  h1 {
     text-align: center;
     margin-bottom: 10px;
     color: #ffffff;
     text-transform: uppercase;
     letter-spacing: 2px;
     font-weight: 300;
-}
-
-/* Conteneur de visualisation */
-#visualization-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 160px;
-    margin-bottom: 30px;
-    perspective: 800px;
-}
-
-/* Style de base du cercle IA */
-#ai-circle {
-    position: relative;
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    background-color: transparent;
-    position: relative;
-    transition: transform 0.5s ease;
-}
-
-/* Anneaux communs à tous les états */
-#ai-circle::before, #ai-circle::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    box-sizing: border-box;
-}
-
-#ai-circle::before {
-    border-top-color: currentColor;
-    border-left-color: currentColor;
-    filter: drop-shadow(0 0 10px currentColor);
-}
-
-#ai-circle::after {
-    border-bottom-color: currentColor;
-    border-right-color: currentColor;
-    filter: drop-shadow(0 0 10px currentColor);
-}
-
-/* Segments intérieurs */
-.circle-segment {
-    position: absolute;
-    width: 70%;
-    height: 70%;
-    top: 15%;
-    left: 15%;
-    border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    box-sizing: border-box;
-}
-
-.segment-inner {
-    position: absolute;
-    width: 40%;
-    height: 40%;
-    top: 30%;
-    left: 30%;
-    border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    box-sizing: border-box;
-}
-
-.segment-line {
-    position: absolute;
-    width: 50%;
-    height: 1px;
-    background-color: rgba(255, 255, 255, 0.2);
-    top: 50%;
-    left: 25%;
-    transform-origin: center;
-}
-
-/* État d'attente (idle) */
-#ai-circle.idle {
-    color: #3498db; /* Bleu apaisant */
-    animation: idle-rotate 8s infinite linear;
-}
-
-#ai-circle.idle .circle-segment {
-    border-color: rgba(52, 152, 219, 0.3);
-    animation: segment-pulse 4s infinite ease-in-out;
-}
-
-#ai-circle.idle .segment-line {
-    background-color: rgba(52, 152, 219, 0.2);
-}
-
-/* État d'écoute */
-#ai-circle.listening {
-    color: #2ecc71; /* Vert vif */
-    animation: listen-rotate 3s infinite ease-in-out alternate;
-}
-
-#ai-circle.listening .circle-segment {
-    border-color: rgba(46, 204, 113, 0.5);
-    animation: listening-pulse 1.5s infinite ease-in-out;
-}
-
-#ai-circle.listening .segment-line {
-    background-color: rgba(46, 204, 113, 0.4);
-    animation: listening-line 1.5s infinite ease-in-out;
-}
-
-/* État de réflexion */
-#ai-circle.thinking {
-    color: #9b59b6; /* Violet */
-    animation: thinking-rotate 4s infinite linear;
-}
-
-#ai-circle.thinking .circle-segment {
-    border-color: rgba(155, 89, 182, 0.5);
-    animation: thinking-segment 3s infinite ease-in-out;
-}
-
-#ai-circle.thinking .segment-line {
-    background-color: rgba(155, 89, 182, 0.4);
-    animation: thinking-line 2s infinite linear;
-}
-
-/* État de réponse */
-#ai-circle.responding {
-    color: #f39c12; /* Orange */
-    animation: responding-rotate 2s infinite ease-in-out alternate;
-}
-
-#ai-circle.responding .circle-segment {
-    border-color: rgba(243, 156, 18, 0.5);
-    animation: responding-segment 1s infinite ease-in-out;
-}
-
-#ai-circle.responding .segment-line {
-    background-color: rgba(243, 156, 18, 0.4);
-    animation: responding-line 1s infinite ease-in-out;
-}
-
-/* État de travail */
-#ai-circle.working {
-    color: #1abc9c; /* Turquoise */
-    animation: working-rotate 3s infinite linear;
-}
-
-#ai-circle.working .circle-segment {
-    border-color: rgba(26, 188, 156, 0.5);
-    animation: working-segment 2.5s infinite ease-in-out;
-}
-
-#ai-circle.working .segment-line {
-    background-color: rgba(26, 188, 156, 0.4);
-    animation: working-line 1.5s infinite linear;
-}
-
-/* Animations */
-@keyframes idle-rotate {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-@keyframes segment-pulse {
-    0%, 100% { transform: scale(1); opacity: 0.7; }
-    50% { transform: scale(1.05); opacity: 1; }
-}
-
-@keyframes listen-rotate {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(20deg); }
-}
-
-@keyframes listening-pulse {
-    0%, 100% { transform: scale(1); opacity: 0.7; }
-    50% { transform: scale(1.1); opacity: 1; }
-}
-
-@keyframes listening-line {
-    0%, 100% { transform: rotate(0deg) scaleX(1); }
-    25% { transform: rotate(90deg) scaleX(1.2); }
-    50% { transform: rotate(180deg) scaleX(1); }
-    75% { transform: rotate(270deg) scaleX(1.2); }
-}
-
-@keyframes thinking-rotate {
-    0% { transform: rotateY(0deg) rotateX(20deg); }
-    50% { transform: rotateY(180deg) rotateX(-10deg); }
-    100% { transform: rotateY(360deg) rotateX(20deg); }
-}
-
-@keyframes thinking-segment {
-    0%, 100% { transform: rotate(0deg); }
-    50% { transform: rotate(180deg); }
-}
-
-@keyframes thinking-line {
-    0% { transform: rotate(0deg) scaleX(1); }
-    50% { transform: rotate(180deg) scaleX(1.5); }
-    100% { transform: rotate(360deg) scaleX(1); }
-}
-
-@keyframes responding-rotate {
-    0% { transform: rotateZ(0deg); }
-    100% { transform: rotateZ(10deg); }
-}
-
-@keyframes responding-segment {
-    0%, 100% { transform: rotate(0deg) scale(1); }
-    50% { transform: rotate(180deg) scale(1.1); }
-}
-
-@keyframes responding-line {
-    0%, 100% { transform: rotate(0deg) scaleX(1); opacity: 0.4; }
-    25% { transform: rotate(90deg) scaleX(1.3); opacity: 0.8; }
-    50% { transform: rotate(180deg) scaleX(1); opacity: 0.4; }
-    75% { transform: rotate(270deg) scaleX(1.3); opacity: 0.8; }
-}
-
-@keyframes working-rotate {
-    0% { transform: rotate(0deg) scale(1); }
-    50% { transform: rotate(180deg) scale(1.05); }
-    100% { transform: rotate(360deg) scale(1); }
-}
-
-@keyframes working-segment {
-    0%, 100% { transform: rotate(0deg) scale(1); }
-    25% { transform: rotate(90deg) scale(1.05); }
-    50% { transform: rotate(180deg) scale(1); }
-    75% { transform: rotate(270deg) scale(1.05); }
-}
-
-@keyframes working-line {
-    0% { transform: rotate(0deg) scaleX(1); }
-    50% { transform: rotate(180deg) scaleX(1.3); }
-    100% { transform: rotate(360deg) scaleX(1); }
-}
-
-/* Particules pour l'animation de réflexion */
-.particle {
-    position: absolute;
-    background-color: rgba(255, 255, 255, 0.7);
-    border-radius: 50%;
-    width: 2px;
-    height: 2px;
-    transform-origin: center;
-    opacity: 0;
-}
-
-/* Interface HUD futuriste */
-#chat-container { 
-    height: 55vh; 
-    overflow-y: auto; 
-    border: 1px solid rgba(52, 152, 219, 0.3); 
+  }
+  
+  /* Chat container */
+  #chat-container {
+    height: 55vh;
+    overflow-y: auto;
+    border: 1px solid rgba(52, 152, 219, 0.3);
     border-radius: 8px;
-    padding: 15px; 
+    padding: 15px;
     margin-bottom: 15px;
     background-color: rgba(20, 20, 35, 0.7);
     box-shadow: 0 0 20px rgba(52, 152, 219, 0.2) inset;
     backdrop-filter: blur(5px);
     scrollbar-width: thin;
     scrollbar-color: rgba(52, 152, 219, 0.5) rgba(20, 20, 35, 0.7);
-}
-
-#chat-container::-webkit-scrollbar {
+  }
+  
+  #chat-container::-webkit-scrollbar {
     width: 6px;
-}
-
-#chat-container::-webkit-scrollbar-track {
+  }
+  
+  #chat-container::-webkit-scrollbar-track {
     background: rgba(20, 20, 35, 0.7);
-}
-
-#chat-container::-webkit-scrollbar-thumb {
+  }
+  
+  #chat-container::-webkit-scrollbar-thumb {
     background-color: rgba(52, 152, 219, 0.5);
     border-radius: 3px;
-}
-
-#input-container { 
-    display: flex; 
+  }
+  
+  #input-container {
+    display: flex;
     position: relative;
-}
-
-#message-input { 
-    flex-grow: 1; 
-    padding: 15px 12px; 
+  }
+  
+  #message-input {
+    flex-grow: 1;
+    padding: 15px 12px;
     margin-right: 10px;
     border-radius: 4px;
     border: 1px solid rgba(52, 152, 219, 0.3);
@@ -311,56 +63,57 @@ h1 {
     box-shadow: 0 0 10px rgba(52, 152, 219, 0.2) inset;
     backdrop-filter: blur(5px);
     transition: all 0.3s ease;
-}
-
-#message-input:focus {
+  }
+  
+  #message-input:focus {
     outline: none;
     border-color: rgba(52, 152, 219, 0.7);
     box-shadow: 0 0 15px rgba(52, 152, 219, 0.4);
-}
-
-button { 
-    padding: 12px 25px; 
+  }
+  
+  button {
+    padding: 12px 25px;
     background: linear-gradient(135deg, rgba(52, 152, 219, 0.8), rgba(52, 152, 219, 0.6));
-    color: white; 
-    border: none; 
+    color: white;
+    border: none;
     border-radius: 4px;
-    cursor: pointer; 
+    cursor: pointer;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     text-transform: uppercase;
     letter-spacing: 1px;
     font-weight: 500;
     transition: all 0.3s ease;
     box-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
-}
-
-button:hover {
+  }
+  
+  button:hover {
     background: linear-gradient(135deg, rgba(41, 128, 185, 0.9), rgba(52, 152, 219, 0.7));
     box-shadow: 0 0 15px rgba(52, 152, 219, 0.5);
     transform: translateY(-2px);
-}
-
-button:active {
+  }
+  
+  button:active {
     transform: translateY(1px);
-}
-
-.message {
+  }
+  
+  /* Messages */
+  .message {
     margin-bottom: 12px;
     padding: 10px 15px;
     border-radius: 8px;
     max-width: 80%;
     position: relative;
     backdrop-filter: blur(5px);
-}
-
-.user-message {
+  }
+  
+  .user-message {
     background-color: rgba(52, 152, 219, 0.2);
     margin-left: auto;
     border-bottom-right-radius: 0;
     border: 1px solid rgba(52, 152, 219, 0.3);
-}
-
-.user-message::before {
+  }
+  
+  .user-message::before {
     content: '';
     position: absolute;
     top: 0;
@@ -372,16 +125,16 @@ button:active {
     animation: shine 3s infinite;
     border-radius: inherit;
     pointer-events: none;
-}
-
-.assistant-message {
+  }
+  
+  .assistant-message {
     background-color: rgba(155, 89, 182, 0.2);
     margin-right: auto;
     border-bottom-left-radius: 0;
     border: 1px solid rgba(155, 89, 182, 0.3);
-}
-
-.assistant-message::before {
+  }
+  
+  .assistant-message::before {
     content: '';
     position: absolute;
     top: 0;
@@ -393,9 +146,9 @@ button:active {
     animation: shine 3s infinite;
     border-radius: inherit;
     pointer-events: none;
-}
-
-.system-message {
+  }
+  
+  .system-message {
     background-color: rgba(149, 165, 166, 0.2);
     margin-left: auto;
     margin-right: auto;
@@ -403,24 +156,24 @@ button:active {
     text-align: center;
     font-style: italic;
     max-width: 60%;
-}
-
-@keyframes shine {
+  }
+  
+  @keyframes shine {
     0% { background-position: 0% 0%; }
     50% { background-position: 100% 100%; }
     100% { background-position: 0% 0%; }
-}
-
-#model-selector {
+  }
+  
+  #model-selector {
     margin-bottom: 20px;
     text-align: center;
     position: relative;
     display: inline-block;
     left: 50%;
     transform: translateX(-50%);
-}
-
-select {
+  }
+  
+  select {
     padding: 8px 12px;
     border-radius: 4px;
     background-color: rgba(20, 20, 35, 0.7);
@@ -431,15 +184,15 @@ select {
     cursor: pointer;
     box-shadow: 0 0 10px rgba(52, 152, 219, 0.2);
     transition: all 0.3s ease;
-}
-
-select:focus {
+  }
+  
+  select:focus {
     outline: none;
     border-color: rgba(52, 152, 219, 0.7);
     box-shadow: 0 0 15px rgba(52, 152, 219, 0.4);
-}
-
-#model-selector::after {
+  }
+  
+  #model-selector::after {
     content: '▼';
     font-size: 10px;
     color: rgba(52, 152, 219, 0.7);
@@ -448,18 +201,10 @@ select:focus {
     top: 50%;
     transform: translateY(-50%);
     pointer-events: none;
-}
-
-/* Conteneur des boutons microphone */
-#mic-buttons-container {
-    display: flex;
-    gap: 10px;
-    margin-right: 10px;
-}
-
-/* Styles communs pour les boutons microphone */
-#mic-button, 
-#mic-button-stream {
+  }
+  
+  #mic-button {
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.8), rgba(52, 152, 219, 0.6));
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -469,186 +214,27 @@ select:focus {
     cursor: pointer;
     box-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
     transition: all 0.3s ease;
-    position: relative;
-}
-
-/* Style spécifique pour le micro classique */
-#mic-button.mic-classic {
-    background: linear-gradient(135deg, rgba(52, 152, 219, 0.8), rgba(52, 152, 219, 0.6));
-}
-
-#mic-button.mic-classic:hover {
+  }
+  
+  #mic-button:hover {
     background: linear-gradient(135deg, rgba(41, 128, 185, 0.9), rgba(52, 152, 219, 0.7));
     box-shadow: 0 0 15px rgba(52, 152, 219, 0.5);
     transform: translateY(-2px);
-}
-
-/* Style spécifique pour le micro streaming */
-#mic-button-stream.mic-stream {
-    background: linear-gradient(135deg, rgba(142, 68, 173, 0.8), rgba(155, 89, 182, 0.6));
-}
-
-#mic-button-stream.mic-stream:hover {
-    background: linear-gradient(135deg, rgba(125, 60, 152, 0.9), rgba(142, 68, 173, 0.7));
-    box-shadow: 0 0 15px rgba(155, 89, 182, 0.5);
-    transform: translateY(-2px);
-}
-
-/* Icône de micro */
-#mic-icon, 
-#mic-stream-icon {
+  }
+  
+  #mic-icon {
     width: 24px;
     height: 24px;
     fill: white;
-}
-
-/* État d'enregistrement pour les deux micros */
-#mic-button.recording,
-#mic-button-stream.recording {
+  }
+  
+  #mic-button.recording {
     background: linear-gradient(135deg, rgba(231, 76, 60, 0.8), rgba(192, 57, 43, 0.6));
     animation: pulse 1.5s infinite;
-}
-
-/* Indicateur de streaming */
-.stream-indicator {
-    position: absolute;
-    bottom: -2px;
-    right: -2px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background-color: #e74c3c;
-    box-shadow: 0 0 5px rgba(231, 76, 60, 0.8);
-}
-
-#mic-button-stream.streaming .stream-indicator {
-    animation: blink 1s infinite;
-}
-
-@keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-
-@keyframes pulse {
+  }
+  
+  @keyframes pulse {
     0% { box-shadow: 0 0 5px rgba(231, 76, 60, 0.5); }
     50% { box-shadow: 0 0 20px rgba(231, 76, 60, 0.8); }
     100% { box-shadow: 0 0 5px rgba(231, 76, 60, 0.5); }
-}
-
-/* Style pour le bouton toggle de mode */
-#mode-toggle {
-    text-align: center;
-    margin-bottom: 20px;
-}
-
-#mode-switch-button {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, rgba(52, 152, 219, 0.8), rgba(52, 152, 219, 0.6));
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    padding: 0;
-}
-
-.mode-icon {
-    width: 24px;
-    height: 24px;
-    fill: white;
-    position: absolute;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.mode-icon.active {
-    opacity: 1;
-}
-
-/* Classes pour les modes de conversation */
-body.voice-mode #chat-container {
-    height: 30vh;
-}
-
-body.voice-mode #visualization-container {
-    height: 300px;
-    margin-top: 50px;
-    margin-bottom: 50px;
-}
-
-body.voice-mode #ai-circle {
-    width: 150px;
-    height: 150px;
-}
-
-body.voice-mode #input-container {
-    display: flex;
-    justify-content: center;
-}
-
-body.voice-mode #message-input,
-body.voice-mode button:not(#mic-button):not(#mic-button-stream):not(#mode-switch-button) {
-    display: none;
-}
-
-body.voice-mode #mic-button,
-body.voice-mode #mic-button-stream {
-    width: 60px;
-    height: 60px;
-}
-
-body.voice-mode #mic-icon,
-body.voice-mode #mic-stream-icon {
-    width: 30px;
-    height: 30px;
-}
-
-/* Animation de transition */
-#visualization-container,
-#chat-container,
-#input-container,
-#ai-circle,
-#mic-button,
-#mic-button-stream,
-#mic-icon,
-#mic-stream-icon {
-    transition: all 0.5s ease-in-out;
-}
-
-
-/*--------------------------------------------- TEXT TO SPEECH ---------- VOCAL SYNTHESE ------------------------------------- */
-
-/* Ajouter ces styles à votre fichier CSS */
-#tts-button {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, rgba(46, 204, 113, 0.8), rgba(39, 174, 96, 0.6));
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    margin-right: 10px;
-    box-shadow: 0 0 10px rgba(46, 204, 113, 0.3);
-    transition: all 0.3s ease;
-}
-
-#tts-button:hover {
-    background: linear-gradient(135deg, rgba(39, 174, 96, 0.9), rgba(46, 204, 113, 0.7));
-    box-shadow: 0 0 15px rgba(46, 204, 113, 0.5);
-    transform: translateY(-2px);
-}
-
-#tts-icon {
-    width: 24px;
-    height: 24px;
-    fill: white;
-    transition: opacity 0.3s ease;
-}
-
-#tts-icon.disabled {
-    opacity: 0.5;
-}
+  }
