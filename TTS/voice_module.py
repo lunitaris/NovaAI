@@ -45,7 +45,7 @@ class VoiceRecognitionService:
             model_path=PIPER_MODEL_PATH,
             config_path=PIPER_CONFIG_PATH
         )
-
+        self.check_piper()  ## TEST 
         logger.info("Service de reconnaissance vocale initialisé")
 
     def _record_audio(self):
@@ -181,8 +181,42 @@ class VoiceRecognitionService:
             logger.error(f"[PIPER] Erreur playback audio : {e}")
 
 
+
+    def check_piper(self):
+        logger.info("🔍 Vérification des capacités de Piper...")
+
+        try:
+            test_phrase = "Test de compatibilité Piper."
+
+            has_synthesize_to_bytes = hasattr(self.piper_voice, "synthesize_to_bytes")
+            logger.info(f"➡️ synthesize_to_bytes() dispo : {has_synthesize_to_bytes}")
+
+            # Test synthèse directe avec fichier temporaire en mémoire
+            buffer = io.BytesIO()
+            with wave.open(buffer, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(16000)
+                self.piper_voice.synthesize(test_phrase, wav_file=wf)
+            logger.info("✅ synthesize(wav_file=wave.Wave_write) fonctionne")
+
+            # Test synthèse vers fichier temporaire réel (si nécessaire)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                with wave.open(f, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(16000)
+                    self.piper_voice.synthesize(test_phrase, wav_file=wf)
+                logger.info("✅ synthesize(wav_file=filename) fonctionne")
+
+        except Exception as e:
+            logger.error(f"❌ Erreur de compatibilité Piper : {e}")
+
+
 def speak_text_blocking(text, voice_service):
     try:
         voice_service.tts_queue.put_nowait(text)
     except Exception as e:
         logger.error(f"[TTS QUEUE] Erreur ajout à la file TTS: {e}")
+
+        
