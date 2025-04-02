@@ -79,6 +79,37 @@ async def delete_semantic_memory(memory_id: str):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+
+
+@app.post("/memory/synthetic/compress")
+async def compress_synthetic_memory():
+    await synthetic_memory.compress_by_theme()
+    return {"message": "Compression terminée"}
+
+
+#### STATISTIQUES
+@app.get("/memory/synthetic/stats")
+def synthetic_memory_stats():
+    from collections import defaultdict
+
+    data = defaultdict(lambda: {"count": 0, "importance_sum": 0.0})
+
+    for s in synthetic_memory.get_summaries():
+        theme = s.get("theme", "inconnu")
+        data[theme]["count"] += 1
+        data[theme]["importance_sum"] += s.get("importance", 0)
+
+    stats = []
+    for theme, info in data.items():
+        stats.append({
+            "theme": theme,
+            "count": info["count"],
+            "average_importance": round(info["importance_sum"] / info["count"], 2)
+        })
+
+    return stats
+
+
 #//////////////////////////////////////////////////////////////////////////////////////////////
 
 def speak_text(text: str):

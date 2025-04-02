@@ -162,8 +162,6 @@ class SyntheticMemory:
         return self._light_summary(combined)
 
 #---------------------------------------------------------------------------------------------
-
-
     def _light_summary(self, text):
         """
         Méthode interne pour générer un résumé rapide sans appel LLM.
@@ -176,6 +174,48 @@ class SyntheticMemory:
         importance = min(10, int(len(text) / 300))  # simple heuristic
         theme = "default"
         return summary.strip(), importance
+
+
+#---------------------------------------------------------------------------------------------
+    async def compress_by_theme(self):
+        """
+        Regroupe les résumés synthétiques par thème, puis crée un résumé global pour chaque groupe.
+        Remplace les anciens résumés par leur version condensée.
+        """
+        from CoreIA.summary_engine import SummaryEngine
+        engine = SummaryEngine()
+
+        # Regrouper par thème
+        grouped = {}
+        for s in self.summaries.values():
+            grouped.setdefault(s['theme'], []).append(s)
+
+        new_summaries = {}
+        for theme, items in grouped.items():
+            if len(items) <= 1:
+                # Garder tel quel
+                for item in items:
+                    new_summaries[item['id']] = item
+                continue
+
+            # Fusionner les résumés
+            combined_text = "\n".join(i['summary'] for i in items)
+            summary, importance = await engine.summarize(combined_text)
+            if summary:
+                summary_id = str(uuid.uuid4())
+                new_summaries[summary_id] = {
+                    "id": summary_id,
+                    "theme": theme,
+                    "summary": summary,
+                    "importance": round(importance, 2),
+                    "timestamp": datetime.now().isoformat()
+                }
+
+        self.summaries = new_summaries
+        self._save()
+        print(f"[MEMO SYNT] {len(self.summaries)} résumés conservés après compression.")
+
+
 
 
 #---------------------------------------------------------------------------------------------

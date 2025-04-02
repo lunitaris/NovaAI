@@ -3,6 +3,8 @@ import json
 from CoreIA.semantic_memory import SemanticMemory
 from CoreIA.synthetic_memory import SyntheticMemory
 from CoreIA.summary_engine import SummaryEngine
+from CoreIA.volatile_memory import ShortTermMemory
+
 
 
 
@@ -11,10 +13,14 @@ OLLAMA_API = "http://localhost:11434/api"
 semantic_memory = SemanticMemory()
 summary_engine = SummaryEngine()
 synthetic_memory = SyntheticMemory(base_dir="memory/summary")
+short_term_memory = ShortTermMemory()
+
 
 
 def prepare_conversation(user_message: str, history: list) -> list:
     conversation = []
+    for m in short_term_memory.get():
+        conversation.append(m)
 
     try:
         with open("CoreIA/personality.json", "r", encoding="utf-8") as f:
@@ -70,6 +76,8 @@ async def get_llm_response(conversation: list, model: str = "llama3", stream: bo
         try:
             user_message = conversation[-2]["content"]
             assistant_response = result.get("message", {}).get("content", "")
+            short_term_memory.add("user", user_message)
+            short_term_memory.add("assistant", assistant_response)
             semantic_memory.add(user_message, assistant_response)
             
             summary, importance = await summary_engine.summarize(user_message)
