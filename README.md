@@ -1,125 +1,66 @@
-Voici le contenu **complet du `README.md`** à jour :
+# 🧠 Nova - Assistant Vocal IA Local
 
----
+Nova est un assistant vocal intelligent totalement local, axé sur le respect de la vie privée et l'autonomie complète. Cette application permet aux utilisateurs de communiquer naturellement via la voix ou en mode texte tout en exploitant une gestion avancée de la mémoire.
 
-```markdown
-# 🧠 Nova - Assistant vocal local intelligent
+## ⚙️ Stack Technique
 
-Nova est un assistant vocal 100% local, rapide, intelligent, et respectueux de ta vie privée.  
-Il utilise Whisper.cpp pour la reconnaissance vocale, Piper pour la synthèse vocale, Ollama pour le LLM (ex: LLaMA 3), et une mémoire hybride sémantique + synthétique.
+### Reconnaissance Vocale (STT)
+- **Whisper.cpp** : Permet de convertir la voix en texte efficacement, même sur des appareils peu puissants.
 
----
+### Synthèse Vocale (TTS)
+- **Piper TTS** : Moteur de synthèse vocale léger et performant utilisé pour générer la réponse audio en temps réel (mode PCM streaming).
 
-## 🚀 Stack technique
+### Modèle de Langage (LLM)
+- **Ollama** : Permet l'exécution locale de modèles de langage tels que `llama3`, fournissant des réponses rapides et cohérentes en mode streaming.
 
-| Fonction | Stack utilisée | Détail |
-|----------|----------------|--------|
-| **Reconnaissance vocale** (STT) | `webrtcvad` + `whisper.cpp` | Silencieux détecté automatiquement |
-| **Synthèse vocale** (TTS) | `Piper` (streaming PCM) | Lecture fluide et locale |
-| **LLM** | `Ollama` + modèle (ex: `llama3`) | Génération de réponse |
-| **Mémoire sémantique** | `SentenceTransformer` + `FAISS` | Embedding de phrases et recherche des souvenirs proches |
-| **Mémoire synthétique** | Résumés organisés par thème | Compression automatique des connaissances |
-| **Orchestration** | FastAPI + HTML/JS | UI simple, rapide, accessible sur `localhost` |
+### Infrastructure Web
+- **FastAPI** : Backend web moderne et performant assurant la gestion des requêtes API.
+- **Uvicorn** : Serveur ASGI pour déployer l'application FastAPI.
 
+### Interface Utilisateur
+- **HTML/CSS/JavaScript** : Interface web intuitive pour administrer Nova et gérer la mémoire via une page d'administration complète.
 
-✅ Un moteur LLM local (Ollama) en streaming
-✅ Une mémoire sémantique vectorielle bien foutue (FAISS + ID)
-✅ Une mémoire synthétique compressée pour les résumés
-✅ Une UI admin efficace
-✅ TTS Piper + STT Whisper (local et performant)
-✅ Un design modulaire
+### Gestion de la Mémoire
+Nova utilise trois types de mémoires pour fournir une expérience utilisateur fluide et pertinente :
 
----
+#### 1. Mémoire Volatile (Short Term)
+- Stockage temporaire des interactions récentes pour un contexte immédiat.
+- Fichier : `volatile_memory.py`
 
-## 🧠 Mécanisme de mémoire
+#### 2. Mémoire Sémantique
+- Basée sur FAISS (vectorielle).
+- Permet de retrouver des souvenirs similaires en fonction du contexte de la conversation.
+- Fichier : `semantic_memory.py`
 
-### 1. Mémoire vectorielle (SemanticMemory)
+#### 3. Mémoire Synthétique
+- Stocke des résumés thématiques condensés à partir des interactions.
+- Utilisée pour maintenir un contexte à long terme sans surcharger la mémoire.
+- Comprend une gestion automatisée de la purge basée sur l'importance et le temps écoulé.
+- Fichier : `synthetic_memory.py`
 
-- Transforme chaque message utilisateur en vecteur (`MiniLM`)
-- Stocke les vecteurs dans une base FAISS (`faiss.index`)
-- Associe chaque vecteur à un `mapping.json` contenant `user + assistant`
-- Lors d’une nouvelle question, cherche les 3 souvenirs les plus proches
+### Moteur de Résumés
+- **Summary Engine** : Génère automatiquement des résumés pour alimenter la mémoire synthétique à partir des interactions utilisateur-assistant.
+- Fichier : `summary_engine.py`
 
-### 2. Mémoire synthétique (SyntheticMemory)
+### Modules de Support
+- **Chat Engine** : Prépare la conversation en intégrant la mémoire sémantique, synthétique et volatile pour fournir un contexte optimal au modèle.
+- **Memory Manager** : Gère la coordination et l'accès aux différentes mémoires du système.
 
-- Crée des résumés thématiques compressés, datés, notés par importance
-- Ex :  
-  ```json
-  {
-    "theme": "data security",
-    "summary": "L'utilisateur protège ses backups via chiffrage GPG.",
-    "importance": 8,
-    "timestamp": "2025-03-30T16:42:15Z"
-  }
-  ```
-- Compression automatique si la mémoire devient trop grosse ou trop vieille
+## 🚀 Fonctionnement Général
+Lors d'une interaction utilisateur :
 
-### 3. Fusion dans le prompt
+1. Whisper.cpp transcrit la voix en texte.
+2. Le texte est envoyé au Chat Engine, qui intègre les mémoires pour générer une réponse contextualisée via Ollama.
+3. La réponse textuelle est transformée en audio en streaming par Piper TTS.
+4. L'interaction est stockée dans les mémoires sémantique et synthétique pour enrichir les interactions futures.
 
-À chaque appel LLM, le prompt est reconstruit ainsi :
-```
-[SYSTEM] Tu es Nova, un assistant vocal
-[Résumé synthétique 1]
-[Résumé synthétique 2]
-[Souvenir sémantique 1]
-[Souvenir sémantique 2]
-[Historique de la session]
-[USER] Ma question
-```
+## 🎛️ Page d'Administration
+Nova inclut une interface web complète permettant :
+- La gestion des résumés synthétiques (consultation, modification, suppression).
+- L'exploration et la gestion de la mémoire sémantique (recherche vectorielle, visualisation des derniers souvenirs).
+- La visualisation des statistiques et thèmes dominants dans la mémoire synthétique.
 
----
-
-## 📂 Arborescence
-
-```
-Nova/
-│
-├── app.py                       # Lanceur principal FastAPI
-├── run.sh                       # Script de démarrage
-├── TTS/
-│   ├── voice_module.py          # Enregistrement + VAD
-│   ├── tts_module.py            # Lecture vocale PCM
-│   └── chat_engine.py           # Orchestration LLM + mémoire
-├── CoreIA/
-│   ├── semantic_memory.py       # Mémoire vectorielle FAISS
-│   ├── synthetic_memory.py      # Résumés synthétiques
-│   └── personality.json         # Prompt système
-├── static/
-│   ├── index.html               # UI HTML
-│   ├── script.js                # JS frontend
-│   └── styles.css               # Styles
-└── memory/
-    ├── history/                 # Vecteurs FAISS + mapping.json
-    └── summary/                 # Résumés synthétiques
-```
-
----
-
-## 🔧 Configuration
-
-- ⚠️ `whisper.cpp` doit être compilé avec l’exécutable `whisper-cli` accessible dans `opt/whisper.cpp/build/`
-- 🧠 LLM (`llama3`, `mistral`, ...) géré via Ollama, vérifie avec :
-  ```bash
-  ollama list
-  ```
-
----
-
-## 🛠️ Améliorations futures
-
-| Idée | Bénéfice |
-|------|----------|
-| Compression dynamique basée sur la latence | Plus rapide quand la mémoire grossit |
-| Auto-thématisation des résumés | Groupes de connaissance plus clairs |
-| Interface de gestion mémoire | Supprimer ou revoir les souvenirs |
-| Historique complet archivé | Navigation chronologique ou par thème |
-| Feedback explicatif | L’IA peut justifier "pourquoi elle se souvient" |
-
-
----
-
-## 🛡️ Respect de la vie privée
-
-Aucun appel réseau externe, tout est local.  
-Pas de tracking, pas d’API externe, pas de dépendance cloud.  
-Nova tourne **chez toi**, pour **toi**, en toute sécurité.
+## 📈 Idées d'Amélioration
+- **Optimisation de Performance** : Amélioration des performances de recherche vectorielle avec des index optimisés.
+- **Personnalisation** : Interface permettant à l'utilisateur de modifier la personnalité et les comportements de Nova directement depuis l'interface d'administration.
+- **Automatisation Avancée** : Intégration de workflows avancés pour automatiser certaines tâches via n8n etc..
