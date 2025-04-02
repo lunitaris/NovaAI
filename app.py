@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 import time
@@ -246,6 +247,12 @@ async def import_synthetic_memory(file: UploadFile = File(...)):
 #//////////////////////////////////////////////////////////////////////////////////////////////
 #----------------------------- ROUTES - STATIC & MIDDLEWARE ----------------------------------
 #//////////////////////////////////////////////////////////////////////////////////////////////
+
+# Page d'administration simple
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    return HTMLResponse(open("static/admin.html", encoding="utf-8").read())
+
 
 # Sert les fichiers statiques (HTML/CSS/JS)
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

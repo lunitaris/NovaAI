@@ -50,7 +50,11 @@ fi
 
 # Lancer l'application principale (qui intègre maintenant TTS et reconnaissance vocale)
 echo -e "${GREEN}Démarrage de l'application principale...${NC}"
-python app.py
+
+#python app.py
+uvicorn app:app --host 0.0.0.0 --port 8000
+
+
 
 # Capture des signaux pour fermer proprement
 trap "echo -e '${YELLOW}Arrêt des services...${NC}'; if [ ! -z $OLLAMA_PID ]; then kill $OLLAMA_PID; fi; exit" INT TERM EXIT
