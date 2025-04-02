@@ -19,6 +19,8 @@
     <section id="synthetic" class="section active">
       <h2>Mémoire Synthétique</h2>
       <p>Résumés thématiques condensés utilisés pour contextualiser les conversations. Nova les génère automatiquement à partir de l'historique utilisateur.</p>
+      <input type="text" id="search-input" placeholder="🔍 Rechercher dans les résumés..." oninput="filterSyntheticMemory()" style="margin-bottom: 15px; padding: 10px; width: 100%;">
+      <button onclick="document.getElementById('search-input').value=''; filterSyntheticMemory()">🔄 Réinitialiser</button>
       <button id="load-btn" onclick="loadSyntheticMemory()">🔄 Load synthetic memory</button>
       <button onclick="exportSyntheticMemory()">💾 Exporter la mémoire en .json</button>
       <input type="file" id="import-file" accept=".json">
@@ -29,7 +31,14 @@
     <section id="semantic" class="section">
       <h2>Mémoire Sémantique</h2>
       <p>Stockage vectoriel via FAISS pour retrouver des souvenirs similaires à une idée exprimée.</p>
-      <p><em>À venir</em></p>
+      <input type="text" id="semantic-query" placeholder="🔍 Tape une phrase à retrouver..." style="padding: 10px; width: 100%; margin-bottom: 10px;">
+      <button onclick="searchSemanticMemory()">🔎 Rechercher</button>
+      <div id="semantic-results"></div>
+      <h3>🔁 Derniers souvenirs enregistrés</h3>
+      <button onclick="loadRecentSemanticMemory()">🔄 Recharger</button>
+      <div id="semantic-recent"></div>
+
+
     </section>
     <section id="settings" class="section">
       <h2>Paramètres</h2>
@@ -129,6 +138,90 @@
         body: JSON.stringify({ field, value })
       });
     }
+
+
+    function filterSyntheticMemory() {
+      const keyword = document.getElementById("search-input").value.toLowerCase();
+      const blocks = document.querySelectorAll(".summary-block");
+      blocks.forEach(block => {
+        const text = block.innerText.toLowerCase();
+        block.style.display = text.includes(keyword) ? "block" : "none";
+      });
+    }
+
+
+    async function searchSemanticMemory() {
+      const query = document.getElementById("semantic-query").value.trim();
+      if (!query) return;
+
+      const res = await fetch(`/memory/semantic/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+
+      const container = document.getElementById("semantic-results");
+      container.innerHTML = "";
+
+      if (data.status !== "ok") {
+        container.innerText = "❌ Erreur : " + data.message;
+        return;
+      }
+
+      if (data.results.length === 0) {
+        container.innerText = "Aucun souvenir trouvé.";
+        return;
+      }
+
+      data.results.forEach(entry => {
+        const div = document.createElement("div");
+        div.className = "summary-block";
+        div.innerHTML = `
+          <strong>Utilisateur :</strong> ${entry.user}<br>
+          <strong>Nova :</strong> ${entry.assistant}
+        `;
+        container.appendChild(div);
+      });
+    }
+
+//---------------------------------------------------------
+    async function loadRecentSemanticMemory() {
+      const res = await fetch("/memory/semantic/recent");
+      const data = await res.json();
+
+      const container = document.getElementById("semantic-recent");
+      container.innerHTML = "";
+
+      if (data.status !== "ok") {
+        container.innerText = "❌ Erreur : " + data.message;
+        return;
+      }
+
+      if (data.results.length === 0) {
+        container.innerText = "Aucun souvenir stocké.";
+        return;
+      }
+
+      data.results.forEach(entry => {
+        const div = document.createElement("div");
+        div.className = "summary-block";
+        div.innerHTML = `
+          <strong>ID:</strong> ${entry.id}<br>
+          <strong>User:</strong> ${entry.user}<br>
+          <strong>Assistant:</strong> ${entry.assistant}<br>
+          <button onclick="deleteSemanticMemory('${entry.id}')">🗑️ Supprimer</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    async function deleteSemanticMemory(id) {
+      const res = await fetch(`/memory/semantic/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.status === "ok") {
+        loadRecentSemanticMemory();
+      } else {
+        alert("Erreur : " + data.message);
+      }
+    }
+//---------------------------------------------------------
 
     window.onload = loadSyntheticMemory;
   </script>

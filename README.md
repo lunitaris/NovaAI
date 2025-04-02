@@ -21,6 +21,14 @@ Il utilise Whisper.cpp pour la reconnaissance vocale, Piper pour la synthèse vo
 | **Mémoire synthétique** | Résumés organisés par thème | Compression automatique des connaissances |
 | **Orchestration** | FastAPI + HTML/JS | UI simple, rapide, accessible sur `localhost` |
 
+
+✅ Un moteur LLM local (Ollama) en streaming
+✅ Une mémoire sémantique vectorielle bien foutue (FAISS + ID)
+✅ Une mémoire synthétique compressée pour les résumés
+✅ Une UI admin efficace
+✅ TTS Piper + STT Whisper (local et performant)
+✅ Un design modulaire
+
 ---
 
 ## 🧠 Mécanisme de mémoire

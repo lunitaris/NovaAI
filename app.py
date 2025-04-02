@@ -18,6 +18,8 @@ from TTS.voice_module import speak_text_blocking
 from TTS.chat_engine import prepare_conversation, get_llm_response
 from CoreIA.synthetic_memory import SyntheticMemory
 from CoreIA.summary_engine import SummaryEngine
+from CoreIA.semantic_memory import SemanticMemory
+
 
 #---------------------------------------------------------------------------------------------
 # Initialisation du logger
@@ -37,9 +39,47 @@ app = FastAPI(title="Assistant IA Local avec Ollama")
 
 voice_service = VoiceRecognitionService()
 synthetic_memory = SyntheticMemory()
+semantic_memory = SemanticMemory()
 summary_engine = SummaryEngine()
 
 #---------------------------------------------------------------------------------------------
+
+
+#//////////////////////////////////////////////////////////////////////////////////////////////
+#----------------------------------- ROUTES MEMORY ------------------------------
+#//////////////////////////////////////////////////////////////////////////////////////////////
+
+
+@app.get("/memory/semantic/search")
+async def search_semantic_memory(q: str):
+    try:
+        results = semantic_memory.search(q, k=5)
+        return {"status": "ok", "results": results}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+
+@app.get("/memory/semantic/recent")
+async def get_recent_semantic_memories():
+    try:
+        last_items = list(semantic_memory.mapping.items())[-10:]  # Les 10 derniers
+        results = [{"id": idx, **entry} for idx, entry in last_items]
+        return {"status": "ok", "results": results}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+
+@app.delete("/memory/semantic/{memory_id}")
+async def delete_semantic_memory(memory_id: str):
+    try:
+        success = semantic_memory.delete_by_id(memory_id)
+        return {"status": "ok" if success else "not_found"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+#//////////////////////////////////////////////////////////////////////////////////////////////
 
 def speak_text(text: str):
     logger.info(f"🔁 Appel de speak_text avec : {text}")
@@ -110,7 +150,10 @@ async def chat_stream(request: Request):
 
             conversation.append({"role": "assistant", "content": total_response})
 
+            semantic_memory.add(user_message, total_response)   ## Mémoire vectorielle
+
             # Concatène tous les messages utilisateur pour résumer uniquement leur contenu
+            # Résumé synthétique + importance
             user_text = "\n".join([msg["content"] for msg in conversation if msg["role"] == "user"])
             summary, importance = await summary_engine.summarize(user_text)
             if summary:

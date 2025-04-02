@@ -56,3 +56,6 @@ main {
   border-radius: 5px;
   cursor: pointer;
 }
+#semantic-results .summary-block {
+  border-left: 4px solid #6c63ff;
+}

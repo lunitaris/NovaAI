@@ -97,3 +97,17 @@ class SummaryEngine:
             if line.strip().startswith(keyword):
                 return line.replace(keyword, "").strip()
         return ""
+
+
+#---------------------------------------------------------------------------------------------
+    async def extract_theme(summary: str) -> str:
+        """
+        Utilise le LLM pour extraire un thème principal (1 mot) à partir d’un résumé.
+        """
+        prompt = f"Quel est le thème principal de ce résumé ? Résumé : \"{summary}\". Réponds par un seul mot."
+        try:
+            result = await chat_async(prompt, model="phi", temperature=0.2)
+            return result.strip().lower().split()[0]  # Ex: "santé mentale" → "santé"
+        except Exception as e:
+            print(f"[WARN] Impossible d'extraire le thème : {e}")
+            return "général"

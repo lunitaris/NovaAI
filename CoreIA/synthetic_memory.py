@@ -123,12 +123,12 @@ class SyntheticMemory:
         :param summary_id: Identifiant du résumé à supprimer
         :return: True si supprimé, False sinon
         """
-        if summary_id in self.summaries:
-            del self.summaries[summary_id]
-            self._save()
-            return True
+        for i, item in enumerate(self.memory):
+            if item["id"] == summary_id:
+                del self.memory[i]
+                self._save()
+                return True
         return False
-
 #---------------------------------------------------------------------------------------------
 
     def prune(self, max_age_days=7, min_importance=3):

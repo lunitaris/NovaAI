@@ -1,12 +1,15 @@
 import httpx
 import json
-from CoreIA.history_vector import SemanticMemory
+from CoreIA.semantic_memory import SemanticMemory
 from CoreIA.synthetic_memory import SyntheticMemory
+from CoreIA.summary_engine import SummaryEngine
+
 
 
 OLLAMA_API = "http://localhost:11434/api"
 
-semantic_memory = SemanticMemory(base_dir="memory/history")
+semantic_memory = SemanticMemory()
+summary_engine = SummaryEngine()
 synthetic_memory = SyntheticMemory(base_dir="memory/summary")
 
 
@@ -24,7 +27,7 @@ def prepare_conversation(user_message: str, history: list) -> list:
     conversation.append({"role": "user", "content": user_message})
 
     # Semantic memory
-    similar_memories = semantic_memory.search_similar(user_message)
+    similar_memories = semantic_memory.search(user_message, k=5)
     for item in similar_memories:
         conversation.insert(1, {"role": "assistant", "content": item["assistant"]})
 
@@ -32,6 +35,16 @@ def prepare_conversation(user_message: str, history: list) -> list:
     summaries = synthetic_memory.get_summaries()
     for entry in summaries[:3]:  # up to 3 summaries
         conversation.insert(1, {"role": "assistant", "content": f"[Summarized context]: {entry['summary']}"})
+
+
+
+    print("🧠 Mémoire sémantique retrouvée (FAISS):")
+    for i, item in enumerate(similar_memories):
+        print(f"  #{i+1} ➤ {item['assistant'][:100]}...")
+
+    print("📄 Résumés synthétiques injectés :")
+    for i, entry in enumerate(summaries[:3]):
+        print(f"  #{i+1} ➤ {entry['summary'][:100]}...")
 
     return conversation
 
@@ -57,8 +70,14 @@ async def get_llm_response(conversation: list, model: str = "llama3", stream: bo
         try:
             user_message = conversation[-2]["content"]
             assistant_response = result.get("message", {}).get("content", "")
-            semantic_memory.store(user_message, assistant_response)
-            synthetic_memory.update_summary(user_message, assistant_response)
+            semantic_memory.add(user_message, assistant_response)
+            
+            summary, importance = await summary_engine.summarize(user_message)
+            if summary:
+                theme = await summary_engine.extract_theme(summary)
+                synthetic_memory.add_summary(theme, summary, importance)
+                print(f"[MEMO SYNT] Résumé : {summary[:60]}... → Thème : {theme}")
+
         except Exception as e:
             print(f"[WARN] Failed to store memory: {e}")
 
