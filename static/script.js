@@ -66,14 +66,18 @@ async function processChatMessageStreaming(message) {
         chatContainer.appendChild(messageElement);
         chatContainer.scrollTop = chatContainer.scrollHeight;
 
+        // 💡 Correction ici :
+        const currentModel = modelSelect.value;
+        const currentMode = mode;
+
         const response = await fetch('/chat-stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message,
+                message: message,
                 history: conversationHistory,
-                model: modelSelect.value,
-                mode: mode
+                model: currentModel,
+                mode: currentMode
             })
         });
 
@@ -101,13 +105,6 @@ async function processChatMessageStreaming(message) {
                             chatContainer.scrollTop = chatContainer.scrollHeight;
                         } else if (data.done) {
                             conversationHistory = data.history;
-                            if (mode === "vocal") {
-                                fetch('/speak', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ text: responseText })
-                                });
-                            }
                             setTimeout(() => { if (currentState === 'responding') setAIState('idle'); }, 2000);
                         } else if (data.error) {
                             console.error('Erreur SSE:', data.error);

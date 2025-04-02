@@ -6,6 +6,7 @@ httpx
 piper-tts
 soundfile
 python-multipart
+pyttsx3
 
 
 # DB VECTORIELLE

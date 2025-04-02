@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -6,18 +5,21 @@ import httpx
 import time
 import logging
 import asyncio
+import threading
+import threading
+import re
+
 import json
 from fastapi import HTTPException
 from fastapi import UploadFile, File
 from TTS.voice_module import VoiceRecognitionService
+from TTS.voice_module import speak_text_blocking
 from TTS.chat_engine import prepare_conversation, get_llm_response
 from CoreIA.synthetic_memory import SyntheticMemory
-from services.tts import TTSService
+from CoreIA.summary_engine import SummaryEngine
 
-
-
-
-# Logger --------------------------------------------------------------
+#---------------------------------------------------------------------------------------------
+# Initialisation du logger
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -27,41 +29,29 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("nova-app")
-# --------------------------------------------------------------
 
+#---------------------------------------------------------------------------------------------
+# Initialisation de l'application FastAPI et des services
 app = FastAPI(title="Assistant IA Local avec Ollama")
 
-
-
-# INITIALISATION DU SERVICE TTS ---------------------------------
 voice_service = VoiceRecognitionService()
-tts_service = TTSService()
+synthetic_memory = SyntheticMemory()
+summary_engine = SummaryEngine()
+
+#---------------------------------------------------------------------------------------------
 
 def speak_text(text: str):
-    print("🔁 Appel de speak_text avec :", text)
-    asyncio.create_task(tts_service.synthesize(text))
-# ----------------------------------------------------------------
-
+    logger.info(f"🔁 Appel de speak_text avec : {text}")
+    speak_text_blocking(text, voice_service)  # Appel direct, SANS thread
 
 response_cache = {}
-synthetic_memory = SyntheticMemory()
+
+#//////////////////////////////////////////////////////////////////////////////////////////////
+#----------------------------------- ROUTES - INTERACTION / CHAT ------------------------------
+#//////////////////////////////////////////////////////////////////////////////////////////////
 
 
-
-
-################################################### ROUTES  ############################################################
-#///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-@app.get("/admin")
-async def serve_admin():
-    from fastapi.responses import FileResponse
-    return FileResponse("static/admin.html")
-
-@app.get("/doc")
-async def serve_documentation():
-    from fastapi.responses import FileResponse
-    return FileResponse("static/doc.html")
-
+# POST /chat-stream : Traitement de message utilisateur et génération de réponse + streaming vocal
 @app.post("/chat-stream")
 async def chat_stream(request: Request):
     data = await request.json()
@@ -75,7 +65,7 @@ async def chat_stream(request: Request):
 
     async def generate():
         total_response = ""
-        current_sentence = ""
+        buffer = ""
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -95,20 +85,33 @@ async def chat_stream(request: Request):
                             continue
                         try:
                             chunk_data = json.loads(line)
+
                             if "message" in chunk_data and "content" in chunk_data["message"]:
                                 content = chunk_data["message"]["content"]
-                                total_response += content
-                                current_sentence += content
+                                
+                                logger.info(f"[STREAM OLLAMA] Chunk reçu : {repr(content)}")  # 🔍 Debug ici
 
+                                total_response += content
+                                buffer += content
                                 yield f"data: {json.dumps({'chunk': content})}\n\n"
+
+                                # Détection de fin de phrase pour vocaliser dès que possible
+                                if voice_enabled:
+                                    # Split les phrases quand elles arrivent en fonction de la ponctuation
+                                    sentences = re.split(r'(?<=[.?!])(?=\s|$)', buffer)  # Split sur ., ?, !
+                                    for s in sentences[:-1]:
+                                        if s.strip():
+                                            speak_text(s.strip())
+                                    buffer = sentences[-1] if sentences else ""
 
                         except json.JSONDecodeError:
                             continue
 
             conversation.append({"role": "assistant", "content": total_response})
-            
-            # Attribue un score d'importance et enregistre l'info si c'est important.
-            summary, importance = synthetic_memory.summarize_history(conversation)
+
+            # Concatène tous les messages utilisateur pour résumer uniquement leur contenu
+            user_text = "\n".join([msg["content"] for msg in conversation if msg["role"] == "user"])
+            summary, importance = await summary_engine.summarize(user_text)
             if summary:
                 synthetic_memory.add_summary(theme="conversation", summary=summary, importance=importance)
 
@@ -121,22 +124,30 @@ async def chat_stream(request: Request):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+#//////////////////////////////////////////////////////////////////////////////////////////////
+#----------------------------------- ROUTES - AUDIO / VOCAL ----------------------------------
+#//////////////////////////////////////////////////////////////////////////////////////////////
+
+# Lance l'enregistrement vocal via VAD
 @app.post("/start-recording")
 async def start_recording():
     success = voice_service.start_recording()
     return {"status": "started" if success else "error"}
 
+# Arrête l'enregistrement vocal
 @app.post("/stop-recording")
 async def stop_recording():
     voice_service.stop_recording()
     return {"status": "stopped"}
 
+# Récupère le texte transcrit après enregistrement
 @app.get("/get-transcription")
 async def get_transcription():
     while voice_service.is_processing:
         await asyncio.sleep(0.1)
     return {"text": voice_service.get_transcription()}
 
+# Joue un texte vocalement avec Nova
 @app.post("/speak")
 async def speak(payload: dict):
     text = payload.get("text")
@@ -144,9 +155,11 @@ async def speak(payload: dict):
         speak_text(text)
     return {"message": "Text enqueued for speech"}
 
+#//////////////////////////////////////////////////////////////////////////////////////////////
+#-------------------------- ROUTES - LLM / LISTE DES MODÈLES ---------------------------------
+#//////////////////////////////////////////////////////////////////////////////////////////////
 
-
-
+# Récupère les modèles disponibles via Ollama
 @app.get("/models")
 async def get_models():
     try:
@@ -161,6 +174,11 @@ async def get_models():
         logger.error(f"Erreur lors de la récupération des modèles: {e}")
         return {"models": []}
 
+#//////////////////////////////////////////////////////////////////////////////////////////////
+#-------------------------- ROUTES - MÉMOIRE SYNTHÉTIQUE --------------------------------------
+#////////////////////////////////////////////////////////////////////////////////////////////##
+
+# Récupère tous les résumés stockés
 @app.get("/memory/synthetic")
 async def get_synthetic_memory():
     try:
@@ -169,6 +187,7 @@ async def get_synthetic_memory():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# Supprime un résumé par ID
 @app.delete("/memory/synthetic/{summary_id}")
 async def delete_synthetic_summary(summary_id: str):
     try:
@@ -177,6 +196,7 @@ async def delete_synthetic_summary(summary_id: str):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# Met à jour un champ (importance ou thème) d’un résumé
 @app.patch("/memory/synthetic/{summary_id}")
 async def update_synthetic_summary(summary_id: str, request: Request):
     data = await request.json()
@@ -201,10 +221,12 @@ async def update_synthetic_summary(summary_id: str, request: Request):
     synthetic_memory._save()
     return {"status": "ok", "updated": {field: value}}
 
+# Exporte la mémoire synthétique (JSON)
 @app.get("/memory/synthetic/export")
 async def export_synthetic_memory():
     return JSONResponse(content=synthetic_memory.memory)
 
+# Importe une mémoire synthétique au format JSON
 @app.post("/memory/synthetic/import")
 async def import_synthetic_memory(file: UploadFile = File(...)):
     try:
@@ -221,24 +243,22 @@ async def import_synthetic_memory(file: UploadFile = File(...)):
     except Exception as e:
         return {"status": "error", "reason": str(e)}
 
+#//////////////////////////////////////////////////////////////////////////////////////////////
+#----------------------------- ROUTES - STATIC & MIDDLEWARE ----------------------------------
+#//////////////////////////////////////////////////////////////////////////////////////////////
 
-
-
-
-
-
-
-#//////////////////////////////////////////////////////////////////////////////////
+# Sert les fichiers statiques (HTML/CSS/JS)
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
+# Middleware pour journaliser les requêtes entrantes
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     return response
 
-
-
+#---------------------------------------------------------------------------------------------
+# Point d'entrée si le script est lancé directement
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000)
