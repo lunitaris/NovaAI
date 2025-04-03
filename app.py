@@ -6,20 +6,18 @@ import httpx
 import time
 import logging
 import asyncio
-import threading
-import threading
 import re
-
 import json
+import uuid
 from fastapi import HTTPException
 from fastapi import UploadFile, File
+
+# Importation des modules Nova
 from TTS.voice_module import VoiceRecognitionService
 from TTS.voice_module import speak_text_blocking
 from TTS.chat_engine import prepare_conversation, get_llm_response
-from CoreIA.synthetic_memory import SyntheticMemory
-from CoreIA.summary_engine import SummaryEngine
-from CoreIA.semantic_memory import SemanticMemory
-
+from CoreIA.graph_memory import get_graph_memory
+from graph_memory_api import router as graph_memory_router
 
 #---------------------------------------------------------------------------------------------
 # Initialisation du logger
@@ -35,93 +33,44 @@ logger = logging.getLogger("nova-app")
 
 #---------------------------------------------------------------------------------------------
 # Initialisation de l'application FastAPI et des services
-app = FastAPI(title="Assistant IA Local avec Ollama")
+app = FastAPI(title="Nova - Assistant IA Local avec mémoire graphe")
 
 voice_service = VoiceRecognitionService()
-synthetic_memory = SyntheticMemory()
-semantic_memory = SemanticMemory()
-summary_engine = SummaryEngine()
+graph_memory = get_graph_memory()  # Obtenir le service de mémoire graphe
+
+# Enregistrement du routeur pour la mémoire graphe
+app.include_router(graph_memory_router)
 
 #---------------------------------------------------------------------------------------------
+# Cache pour les sessions actives
+active_sessions = {}
 
+def get_or_create_session(client_id=None):
+    """
+    Retourne un ID de session existant ou en crée un nouveau.
+    """
+    if client_id and client_id in active_sessions:
+        return active_sessions[client_id]
+    
+    # Générer un nouvel ID de session
+    session_id = str(uuid.uuid4())
+    
+    if client_id:
+        active_sessions[client_id] = session_id
+        
+    return session_id
 
-#//////////////////////////////////////////////////////////////////////////////////////////////
-#----------------------------------- ROUTES MEMORY ------------------------------
-#//////////////////////////////////////////////////////////////////////////////////////////////
-
-
-@app.get("/memory/semantic/search")
-async def search_semantic_memory(q: str):
-    try:
-        results = semantic_memory.search(q, k=5)
-        return {"status": "ok", "results": results}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-
-@app.get("/memory/semantic/recent")
-async def get_recent_semantic_memories():
-    try:
-        last_items = list(semantic_memory.mapping.items())[-10:]  # Les 10 derniers
-        results = [{"id": idx, **entry} for idx, entry in last_items]
-        return {"status": "ok", "results": results}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-
-@app.delete("/memory/semantic/{memory_id}")
-async def delete_semantic_memory(memory_id: str):
-    try:
-        success = semantic_memory.delete_by_id(memory_id)
-        return {"status": "ok" if success else "not_found"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-
-@app.post("/memory/synthetic/compress")
-async def compress_synthetic_memory():
-    await synthetic_memory.compress_by_theme()
-    return {"message": "Compression terminée"}
-
-
-#### STATISTIQUES
-@app.get("/memory/synthetic/stats")
-def synthetic_memory_stats():
-    from collections import defaultdict
-
-    data = defaultdict(lambda: {"count": 0, "importance_sum": 0.0})
-
-    for s in synthetic_memory.get_summaries():
-        theme = s.get("theme", "inconnu")
-        data[theme]["count"] += 1
-        data[theme]["importance_sum"] += s.get("importance", 0)
-
-    stats = []
-    for theme, info in data.items():
-        stats.append({
-            "theme": theme,
-            "count": info["count"],
-            "average_importance": round(info["importance_sum"] / info["count"], 2)
-        })
-
-    return stats
-
-
-#//////////////////////////////////////////////////////////////////////////////////////////////
-
+#---------------------------------------------------------------------------------------------
+# Fonction pour parler du texte
 def speak_text(text: str):
     logger.info(f"🔁 Appel de speak_text avec : {text}")
-    speak_text_blocking(text, voice_service)  # Appel direct, SANS thread
+    speak_text_blocking(text, voice_service)
 
 response_cache = {}
 
 #//////////////////////////////////////////////////////////////////////////////////////////////
 #----------------------------------- ROUTES - INTERACTION / CHAT ------------------------------
 #//////////////////////////////////////////////////////////////////////////////////////////////
-
 
 # POST /chat-stream : Traitement de message utilisateur et génération de réponse + streaming vocal
 @app.post("/chat-stream")
@@ -130,10 +79,16 @@ async def chat_stream(request: Request):
     user_message = data.get("message", "")
     history = data.get("history", [])
     model = data.get("model", "llama3")
+    
+    # Identifier la session
+    client_id = data.get("client_id", None)
+    session_id = get_or_create_session(client_id)
 
     mode = data.get("mode", "chat")
     voice_enabled = mode == "vocal"
-    conversation = prepare_conversation(user_message, history)
+    
+    # Préparer la conversation avec la mémoire graphe
+    conversation = await prepare_conversation(user_message, history, session_id=session_id)
 
     async def generate():
         total_response = ""
@@ -179,25 +134,35 @@ async def chat_stream(request: Request):
                         except json.JSONDecodeError:
                             continue
 
+            # Ajouter la réponse finale à l'historique de conversation
             conversation.append({"role": "assistant", "content": total_response})
 
-            semantic_memory.add(user_message, total_response)   ## Mémoire vectorielle
-
-            # Concatène tous les messages utilisateur pour résumer uniquement leur contenu
-            # Résumé synthétique + importance
-            user_text = "\n".join([msg["content"] for msg in conversation if msg["role"] == "user"])
-            summary, importance = await summary_engine.summarize(user_text)
+            # Mettre à jour la mémoire graphe avec le nouvel échange
+            user_msg_id = graph_memory.add_message("user", user_message, session_id=session_id)
+            assistant_msg_id = graph_memory.add_message("assistant", total_response, session_id=session_id)
+            
+            # Déplacer la création de résumé ici pour avoir accès à la réponse complète
+            from CoreIA.summary_engine import SummaryEngine
+            summary_engine = SummaryEngine()
+            
+            summary, importance = await summary_engine.summarize(f"{user_message}\n{total_response}")
             if summary:
-                synthetic_memory.add_summary(theme="conversation", summary=summary, importance=importance)
+                theme = await summary_engine.extract_theme(summary)
+                graph_memory.add_summary(
+                    theme=theme, 
+                    summary=summary, 
+                    importance=importance,
+                    related_messages=[user_msg_id, assistant_msg_id]
+                )
+                logger.info(f"[MEMO GRAPH] Résumé ajouté: {summary[:100]}... (Thème: {theme})")
 
-            yield f"data: {json.dumps({'done': True, 'history': conversation})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'history': conversation, 'session_id': session_id})}\n\n"
 
         except Exception as e:
             logger.error(f"Erreur stream/chat : {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
-
 
 #//////////////////////////////////////////////////////////////////////////////////////////////
 #----------------------------------- ROUTES - AUDIO / VOCAL ----------------------------------
@@ -250,83 +215,13 @@ async def get_models():
         return {"models": []}
 
 #//////////////////////////////////////////////////////////////////////////////////////////////
-#-------------------------- ROUTES - MÉMOIRE SYNTHÉTIQUE --------------------------------------
-#////////////////////////////////////////////////////////////////////////////////////////////##
-
-# Récupère tous les résumés stockés
-@app.get("/memory/synthetic")
-async def get_synthetic_memory():
-    try:
-        summaries = synthetic_memory.get_summaries()
-        return {"status": "ok", "summaries": summaries}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-# Supprime un résumé par ID
-@app.delete("/memory/synthetic/{summary_id}")
-async def delete_synthetic_summary(summary_id: str):
-    try:
-        success = synthetic_memory.delete_summary(summary_id)
-        return {"status": "ok" if success else "not_found"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-# Met à jour un champ (importance ou thème) d’un résumé
-@app.patch("/memory/synthetic/{summary_id}")
-async def update_synthetic_summary(summary_id: str, request: Request):
-    data = await request.json()
-    field = data.get("field")
-    value = data.get("value")
-
-    valid_fields = {"theme", "importance"}
-    if field not in valid_fields:
-        raise HTTPException(status_code=400, detail="Champ modifiable non autorisé")
-
-    entry = synthetic_memory.get_summary_by_id(summary_id)
-    if not entry:
-        raise HTTPException(status_code=404, detail="Résumé introuvable")
-
-    if field == "importance":
-        try:
-            value = int(value)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Importance doit être un entier")
-
-    entry[field] = value
-    synthetic_memory._save()
-    return {"status": "ok", "updated": {field: value}}
-
-# Exporte la mémoire synthétique (JSON)
-@app.get("/memory/synthetic/export")
-async def export_synthetic_memory():
-    return JSONResponse(content=synthetic_memory.memory)
-
-# Importe une mémoire synthétique au format JSON
-@app.post("/memory/synthetic/import")
-async def import_synthetic_memory(file: UploadFile = File(...)):
-    try:
-        contents = await file.read()
-        data = json.loads(contents)
-        if isinstance(data, list):
-            for entry in data:
-                if all(k in entry for k in ("id", "summary", "theme", "importance", "timestamp")):
-                    if not any(m["id"] == entry["id"] for m in synthetic_memory.memory):
-                        synthetic_memory.memory.append(entry)
-            synthetic_memory._save()
-            return {"status": "ok", "count": len(data)}
-        return {"status": "error", "reason": "Format JSON invalide"}
-    except Exception as e:
-        return {"status": "error", "reason": str(e)}
-
-#//////////////////////////////////////////////////////////////////////////////////////////////
-#----------------------------- ROUTES - STATIC & MIDDLEWARE ----------------------------------
+#-------------------------- ROUTES - STATIC & MIDDLEWARE ----------------------------------
 #//////////////////////////////////////////////////////////////////////////////////////////////
 
 # Page d'administration simple
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
     return HTMLResponse(open("static/admin.html", encoding="utf-8").read())
-
 
 # Sert les fichiers statiques (HTML/CSS/JS)
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
